@@ -1,0 +1,84 @@
+"""Core data structures and utilities for torchpathint."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import torch
+
+
+@dataclass
+class IntegralOutput:
+    """Result of a definite-integral computation.
+
+    Attributes:
+        integral: Computed integral value. Shape: [D].
+        method: Name of the quadrature rule used (e.g. 'gk21', 'gl15').
+        t_init: Lower integration bound, as a 0-d tensor.
+        t_final: Upper integration bound, as a 0-d tensor.
+        t: Quadrature points actually evaluated, grouped by interval.
+            Shape: [N, K] where N = number of (sub)intervals, K = nodes per rule.
+        y: Integrand values at t. Shape: [N, K, D].
+        h: Width of each (sub)interval, t_right - t_left. Shape: [N].
+        sum_intervals: Per-interval integral contributions. Shape: [N, D].
+        sum_interval_errors: Per-interval error estimates from the embedded rule.
+            Shape: [N, D]. None for non-adaptive methods.
+        integral_error: Estimated total error. Shape: [D]. None for non-adaptive.
+        error_ratios: Per-interval error / tolerance. Shape: [N]. None for non-adaptive.
+        t_optimal: Refined interval barriers suitable for warm-starting a future
+            integration of a similar integrand. Shape: [M]. None for non-adaptive.
+        n_iterations: Adaptive refinement iterations performed (0 for non-adaptive).
+        n_evaluations: Total number of integrand evaluations.
+    """
+
+    integral: torch.Tensor
+    method: str
+    t_init: torch.Tensor
+    t_final: torch.Tensor
+    t: torch.Tensor
+    y: torch.Tensor
+    h: torch.Tensor
+    sum_intervals: torch.Tensor
+    sum_interval_errors: torch.Tensor | None = None
+    integral_error: torch.Tensor | None = None
+    error_ratios: torch.Tensor | None = None
+    t_optimal: torch.Tensor | None = None
+    n_iterations: int = 0
+    n_evaluations: int = 0
+
+
+def normalize_bound(
+    bound: float | int | torch.Tensor,
+    device: torch.device,
+    dtype: torch.dtype,
+    name: str,
+) -> torch.Tensor:
+    """Coerce an integration bound to a 0-d tensor on the target device/dtype.
+
+    Accepts a Python ``float``/``int`` or a 0-d ``torch.Tensor``. A 0-d tensor
+    that already has ``requires_grad=True`` is preserved (the result is on the
+    same autograd graph), enabling gradients with respect to integration limits.
+
+    Rejects 1-d or higher tensors — the integrator's time axis is scalar, so
+    multi-element bound tensors are almost always a shape bug carried over from
+    older APIs.
+    """
+    if isinstance(bound, torch.Tensor):
+        if bound.dim() != 0:
+            raise ValueError(
+                f"{name} must be a scalar (Python number or 0-d tensor); "
+                f"got tensor of shape {tuple(bound.shape)}."
+            )
+        return bound.to(device=device, dtype=dtype)
+    if isinstance(bound, (int, float)):
+        return torch.tensor(bound, device=device, dtype=dtype)
+    raise TypeError(
+        f"{name} must be a float, int, or 0-d torch.Tensor; got {type(bound).__name__}."
+    )
+
+
+def resolve_device(device: str | torch.device | None) -> torch.device:
+    """Default to CUDA if available, else CPU."""
+    if device is None:
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device(device)

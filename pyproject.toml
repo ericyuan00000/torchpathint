@@ -1,0 +1,91 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "torchpathint"
+description = "Parallel adaptive quadrature for definite path integrals on PyTorch."
+version = "0.0.1"
+readme = "README.md"
+license = "CC-BY-4.0"
+authors = [{ name = "Eric Yuan", email = "ericyuan@berkeley.edu" }]
+keywords = ["path integral", "quadrature", "gauss-kronrod", "torch"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+  "Operating System :: Unix",
+  "Operating System :: MacOS",
+]
+requires-python = ">=3.10"
+dependencies = ["numpy", "torch"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4.0", "pytest-cov>=3.10.0", "mypy", "pre-commit", "ruff>=0.4.0", "typos"]
+
+[tool.setuptools.package-data]
+torchpathint = ["py.typed"]
+
+[tool.pyright]
+include = ["torchpathint"]
+exclude = ["**/__pycache__"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = ["-p no:warnings", "--import-mode=importlib"]
+xfail_strict = true
+log_cli_level = "warn"
+pythonpath = "torchpathint"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["torchpathint"]
+
+[tool.coverage.report]
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+  "except ImportError",
+]
+
+[tool.ruff]
+line-length = 88
+src = ["torchpathint"]
+extend-include = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = [
+  "A", "ARG", "ASYNC", "B", "C4", "DTZ", "E", "EXE", "F", "FA", "FLY",
+  "I", "ICN", "INT", "ISC", "LOG", "NPY", "PD", "PERF", "PIE", "PL",
+  "PT", "PTH", "PYI", "Q", "RET", "RSE", "RUF", "SIM", "SLOT", "T20",
+  "TCH", "TID", "ASYNC1", "UP", "W", "YTT",
+]
+ignore = [
+  "E501", "ISC001", "PERF203", "PLR",
+  "PT011", "PT012", "RET505",
+]
+unfixable = ["T20", "F841"]
+pydocstyle.convention = "numpy"
+
+[tool.ruff.lint.isort]
+known-first-party = ["torchpathint"]
+required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/**" = ["ANN", "ARG", "D", "E402", "PTH", "S101"]
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
+
+[tool.mypy]
+ignore_missing_imports = true
+namespace_packages = true
+explicit_package_bases = true
+no_implicit_optional = false
+disable_error_code = "annotation-unchecked"
