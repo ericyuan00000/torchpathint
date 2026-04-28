@@ -307,3 +307,116 @@ def test_adaptive_fp32(cpu_device):
     )
     assert out.integral.dtype == torch.float32
     assert abs(out.integral.item() - 2.0) < 1e-5
+
+
+# --- output structural invariants -------------------------------------------
+
+
+def test_adaptive_t_eval_shape_matches_method_K(cpu_device):
+    out = adaptive_quadrature(
+        gaussian_peak,
+        0.0,
+        1.0,
+        method="gk31",
+        atol=1e-9,
+        rtol=1e-9,
+        device=cpu_device,
+    )
+    assert out.t.shape == (out.sum_intervals.shape[0], 31)
+    assert out.y.shape == (out.sum_intervals.shape[0], 31, 1)
+
+
+def test_adaptive_t_optimal_length(cpu_device):
+    """t_optimal is one longer than the accepted-interval count."""
+    out = adaptive_quadrature(
+        gaussian_peak,
+        0.0,
+        1.0,
+        method="gk21",
+        atol=1e-9,
+        rtol=1e-9,
+        device=cpu_device,
+    )
+    assert out.t_optimal.numel() == out.sum_intervals.shape[0] + 1
+
+
+def test_adaptive_intervals_cover_domain(cpu_device):
+    """Adjacent accepted intervals share a barrier and cover [t_init, t_final]."""
+    out = adaptive_quadrature(
+        gaussian_peak,
+        0.0,
+        1.0,
+        method="gk21",
+        atol=1e-9,
+        rtol=1e-9,
+        device=cpu_device,
+    )
+    barriers = out.t_optimal
+    assert barriers[0].item() == 0.0
+    assert barriers[-1].item() == 1.0
+    # No gaps, no overlaps.
+    assert torch.all(barriers[1:] - barriers[:-1] > 0)
+
+
+def test_adaptive_t_eval_lies_inside_intervals(cpu_device):
+    """Each row of t (per-interval node positions) lies inside that interval."""
+    out = adaptive_quadrature(
+        sin_integrand,
+        0.0,
+        math.pi,
+        method="gk21",
+        atol=1e-10,
+        rtol=1e-10,
+        device=cpu_device,
+    )
+    barriers = out.t_optimal
+    for i in range(out.t.shape[0]):
+        assert torch.all(out.t[i] >= barriers[i])
+        assert torch.all(out.t[i] <= barriers[i + 1])
+
+
+# --- fixed_quadrature input validation --------------------------------------
+
+
+def test_fixed_rejects_wrong_output_shape(cpu_device):
+    def bad_f(t):
+        return torch.sin(t)  # missing trailing D
+
+    with pytest.raises(ValueError, match=r"shape \[N, D\]"):
+        fixed_quadrature(bad_f, 0.0, 1.0, method="gl15", device=cpu_device)
+
+
+def test_fixed_n_evaluations_equals_K(cpu_device):
+    out = fixed_quadrature(
+        sin_integrand, 0.0, math.pi, method="gl21", device=cpu_device
+    )
+    assert out.n_evaluations == 21
+    assert out.t.shape == (1, 21)
+    assert out.h.shape == (1,)
+
+
+# --- evaluate_chunked: more shapes ------------------------------------------
+
+
+def test_evaluate_chunked_preserves_D(cpu_device):
+    """A vector integrand keeps its trailing D under chunking."""
+    t = torch.linspace(0.0, 1.0, 13, dtype=torch.float64)
+    out = evaluate_chunked(vector_integrand, t, max_batch=4)
+    assert out.shape == (13, 3)
+    assert torch.allclose(out, vector_integrand(t))
+
+
+def test_evaluate_chunked_single_call_when_max_batch_is_large(cpu_device):
+    """If max_batch >= n, the helper should call f exactly once."""
+    calls = 0
+
+    def counting(t):
+        nonlocal calls
+        calls += 1
+        return sin_integrand(t)
+
+    t = torch.linspace(0.0, 1.0, 50, dtype=torch.float64)
+    evaluate_chunked(counting, t, max_batch=100)
+    assert calls == 1
+    evaluate_chunked(counting, t, max_batch=None)
+    assert calls == 2  # one more, single-batched again
