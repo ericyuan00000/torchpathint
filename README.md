@@ -51,6 +51,8 @@ print(out.n_iterations)    # 1   — sin is smooth, one Kronrod application conv
 ```
 
 A self-contained tour of the API is in [`examples/quickstart.py`](examples/quickstart.py).
+For more depth, see [`docs/`](docs/index.md): theory notes, full API reference,
+the memory probe, and a migration guide from `torchpathdiffeq`.
 
 ## Methods
 
