@@ -48,7 +48,7 @@ class IntegralOutput:
 
 
 def normalize_bound(
-    bound: float | int | torch.Tensor,
+    bound: float | torch.Tensor,
     device: torch.device,
     dtype: torch.dtype,
     name: str,
