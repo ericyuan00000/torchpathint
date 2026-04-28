@@ -271,7 +271,8 @@ def test_sum_intervals_equals_integral(cpu_device):
     assert diff < 1e-12
 
 
-def test_t_optimal_endpoints_are_bounds(cpu_device):
+def test_h_sums_to_domain_width(cpu_device):
+    """The interval widths sum to the full domain (no gaps, no overlaps)."""
     out = path_integral(
         _gaussian_peak,
         0.0,
@@ -281,37 +282,8 @@ def test_t_optimal_endpoints_are_bounds(cpu_device):
         rtol=1e-9,
         device=cpu_device,
     )
-    assert out.t_optimal[0].item() == out.t_init.item()
-    assert out.t_optimal[-1].item() == out.t_final.item()
-
-
-def test_t_optimal_strictly_increasing(cpu_device):
-    out = path_integral(
-        _gaussian_peak,
-        0.0,
-        1.0,
-        method="gk21",
-        atol=1e-9,
-        rtol=1e-9,
-        device=cpu_device,
-    )
-    diffs = out.t_optimal[1:] - out.t_optimal[:-1]
-    assert torch.all(diffs > 0)
-
-
-def test_h_matches_t_diff(cpu_device):
-    """h equals consecutive barrier differences over accepted intervals."""
-    out = path_integral(
-        _gaussian_peak,
-        0.0,
-        1.0,
-        method="gk21",
-        atol=1e-9,
-        rtol=1e-9,
-        device=cpu_device,
-    )
-    expected = out.t_optimal[1:] - out.t_optimal[:-1]
-    assert torch.allclose(out.h, expected, atol=1e-15)
+    assert torch.all(out.h > 0)
+    assert abs(out.h.sum().item() - 1.0) < 1e-12
 
 
 def test_y_matches_reevaluation(cpu_device):
@@ -359,62 +331,6 @@ def test_error_ratios_under_tolerance_after_convergence(cpu_device):
         device=cpu_device,
     )
     assert torch.all(out.error_ratios < 1.0)
-
-
-# ---------------------------------------------------------------------------
-# Warm start at the dispatch level
-# ---------------------------------------------------------------------------
-
-
-def test_warm_start_via_path_integral(cpu_device):
-    out1 = path_integral(
-        _gaussian_peak,
-        0.0,
-        1.0,
-        method="gk21",
-        atol=1e-9,
-        rtol=1e-9,
-        device=cpu_device,
-    )
-    out2 = path_integral(
-        _gaussian_peak,
-        0.0,
-        1.0,
-        method="gk21",
-        atol=1e-9,
-        rtol=1e-9,
-        t=out1.t_optimal[1:-1],
-        device=cpu_device,
-    )
-    assert out2.n_iterations == 1
-    assert abs(out2.integral.item() - out1.integral.item()) < 1e-12
-
-
-def test_t_with_unsorted_interior_barriers(cpu_device):
-    """The integrator sorts user-supplied interior barriers internally."""
-    unsorted = torch.tensor([0.7, 0.2, 0.5, 0.3], dtype=torch.float64)
-    sorted_ = torch.tensor([0.2, 0.3, 0.5, 0.7], dtype=torch.float64)
-    a = path_integral(
-        _gaussian_peak,
-        0.0,
-        1.0,
-        method="gk21",
-        atol=1e-9,
-        rtol=1e-9,
-        t=unsorted,
-        device=cpu_device,
-    )
-    b = path_integral(
-        _gaussian_peak,
-        0.0,
-        1.0,
-        method="gk21",
-        atol=1e-9,
-        rtol=1e-9,
-        t=sorted_,
-        device=cpu_device,
-    )
-    assert abs(a.integral.item() - b.integral.item()) < 1e-12
 
 
 # ---------------------------------------------------------------------------

@@ -26,7 +26,6 @@ def test_dispatches_to_adaptive_for_gk(cpu_device):
     )
     assert out.method == "gk21"
     assert out.integral_error is not None
-    assert out.t_optimal is not None
     assert abs(out.integral.item() - 2.0) < 1e-10
 
 
@@ -34,7 +33,6 @@ def test_dispatches_to_fixed_for_gl(cpu_device):
     out = path_integral(sin_integrand, 0.0, math.pi, method="gl15", device=cpu_device)
     assert out.method == "gl15"
     assert out.integral_error is None
-    assert out.t_optimal is None
     assert abs(out.integral.item() - 2.0) < 1e-10
 
 

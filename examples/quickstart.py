@@ -60,41 +60,6 @@ def example_vector_integrand() -> None:
     print("  expected = [2, 0, 0]")
 
 
-def example_warm_start() -> None:
-    """Reuse the converged mesh for repeated integration in a training loop."""
-    print("\n[warm start] reuse t_optimal across calls")
-
-    def make_peak(width_inv: float):
-        return lambda t: torch.exp(-width_inv * (t - 0.5) ** 2).unsqueeze(-1)
-
-    # First call: cold start
-    out = path_integral(
-        make_peak(1000.0),
-        0.0,
-        1.0,
-        method="gk21",
-        atol=1e-9,
-        rtol=1e-9,
-    )
-    cold_iters, cold_intervals = out.n_iterations, out.sum_intervals.shape[0]
-
-    # Second call: warm start with the previous mesh
-    out_warm = path_integral(
-        make_peak(1000.0),
-        0.0,
-        1.0,
-        method="gk21",
-        atol=1e-9,
-        rtol=1e-9,
-        t=out.t_optimal[1:-1],  # interior barriers only
-    )
-    print(f"  cold: iters={cold_iters}, intervals={cold_intervals}")
-    print(
-        f"  warm: iters={out_warm.n_iterations}, "
-        f"intervals={out_warm.sum_intervals.shape[0]}"
-    )
-
-
 def example_memory_chunking() -> None:
     """Bound peak GPU memory with max_batch when the integrand is expensive."""
     print("\n[chunked] gk31 (K=31 nodes per interval) chunked at 5 evals per call")
@@ -149,6 +114,5 @@ if __name__ == "__main__":
     example_smooth()
     example_sharp_peak()
     example_vector_integrand()
-    example_warm_start()
     example_memory_chunking()
     example_auto_batch_sizing()

@@ -57,7 +57,6 @@ it.
 out = path_integral(f, t_init, t_final, *,
                     method="gk21",
                     atol=1e-5, rtol=1e-5,
-                    t=None,
                     max_batch=None, total_mem_usage=None,
                     max_iter=50,
                     device=None, dtype=torch.float64)
@@ -65,7 +64,7 @@ out = path_integral(f, t_init, t_final, *,
 
 - `method` starting with `"gk"` dispatches to `adaptive_quadrature`.
 - `method` starting with `"gl"` dispatches to `fixed_quadrature`. For `gl*`,
-  the `atol`, `rtol`, `t`, and `max_iter` arguments are unused.
+  the `atol`, `rtol`, and `max_iter` arguments are unused.
 - `device=None` defaults to CUDA when available, else CPU.
 
 Returns an [`IntegralOutput`](#integraloutput).
@@ -76,8 +75,6 @@ The adaptive Gauss–Kronrod engine. Always use this for `gk*` methods.
 
 - Splits intervals at the midpoint until per-interval error meets
   `atol + rtol · |I_running|` (RMS over output dim).
-- `t=` is an optional initial interior mesh: 1-d tensor of barriers strictly
-  inside `(t_init, t_final)`. Useful for warm-starting.
 - `max_iter` defaults to 50. On the last iteration any still-over-tolerance
   intervals are force-accepted with a `UserWarning`.
 
@@ -86,7 +83,7 @@ The adaptive Gauss–Kronrod engine. Always use this for `gk*` methods.
 A single Gauss–Legendre rule applied to the full domain. No subintervals,
 no error estimate.
 
-- Returns `integral_error=None`, `error_ratios=None`, `t_optimal=None`.
+- Returns `integral_error=None` and `error_ratios=None`.
 - `gl<n>` for any positive integer `n` is supported. Larger `n` is more
   accurate on smooth integrands but allocates more memory per call.
 
@@ -131,12 +128,11 @@ Dataclass returned by every integrator. Notable fields:
 | `sum_interval_errors` | `[N, D]` or None | Per-interval embedded-rule differences. |
 | `integral_error` | `[D]` or None | Total error estimate. |
 | `error_ratios` | `[N]` or None | Per-interval `ε_i / tol`. Useful diagnostic for "where did refinement land". |
-| `t_optimal` | `[N+1]` or None | Full converged barrier mesh, `t_init` and `t_final` at the ends. Use `t_optimal[1:-1]` for warm-start. |
 | `n_iterations` | int | Adaptive refinement iterations performed. |
 | `n_evaluations` | int | Total integrand evaluations. |
 
-For `gl*` methods, `sum_interval_errors`, `integral_error`, `error_ratios`,
-and `t_optimal` are `None`, and `N = 1` (one trivial "interval").
+For `gl*` methods, `sum_interval_errors`, `integral_error`, and
+`error_ratios` are `None`, and `N = 1` (one trivial "interval").
 
 ## `Method` and `get_method`
 

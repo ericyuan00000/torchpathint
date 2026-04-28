@@ -2,7 +2,7 @@
 
 The adaptive engine ``adaptive_quadrature`` is the heart of the library:
 
-1. Start with one interval ``[t_init, t_final]`` (or a user-provided mesh).
+1. Start with one interval ``[t_init, t_final]``.
 2. Evaluate the integrand at the rule's quadrature nodes inside every
    pending interval, *in parallel*. Evaluations are flattened into a single
    ``[total_points]`` tensor and chunked by ``max_batch`` if the user wants
@@ -78,7 +78,6 @@ def adaptive_quadrature(
     method: str = "gk21",
     atol: float = 1e-5,
     rtol: float = 1e-5,
-    t: torch.Tensor | None = None,
     max_batch: int | None = None,
     total_mem_usage: float | None = None,
     max_iter: int = 50,
@@ -97,9 +96,6 @@ def adaptive_quadrature(
             ``"gk31"``).
         atol: Absolute tolerance for per-interval error.
         rtol: Relative tolerance, scaled by the running integral magnitude.
-        t: Optional initial interior mesh of barrier positions (1-d). The
-            integrator inserts ``t_init`` and ``t_final`` and sorts. Useful
-            for warm-starting from a previous ``IntegralOutput.t_optimal``.
         max_batch: Maximum integrand evaluations per ``f`` call. ``None``
             means no chunking (one big batch) unless ``total_mem_usage`` is
             set, in which case chunking is sized automatically. Chunks span
@@ -117,8 +113,7 @@ def adaptive_quadrature(
 
     Returns:
         :class:`IntegralOutput` with the integral, error estimate, mesh, and
-        per-interval diagnostics. ``t_optimal`` is the converged mesh suitable
-        for passing back as ``t`` on a subsequent call.
+        per-interval diagnostics.
     """
     device = resolve_device(device)
     t_init_t = normalize_bound(t_init, device, dtype, "t_init")
@@ -137,23 +132,8 @@ def adaptive_quadrature(
     if max_batch is None and total_mem_usage is not None:
         max_batch = estimate_max_batch(f, t_init_t, device, total_mem_usage)
 
-    # Initial pending intervals
-    if t is None:
-        pending_left = t_init_t.unsqueeze(0)
-        pending_right = t_final_t.unsqueeze(0)
-    else:
-        if t.dim() != 1:
-            raise ValueError(f"t must be 1-d; got shape {tuple(t.shape)}.")
-        barriers = torch.cat(
-            [
-                t_init_t.unsqueeze(0),
-                t.to(device=device, dtype=dtype),
-                t_final_t.unsqueeze(0),
-            ]
-        )
-        barriers, _ = barriers.sort()
-        pending_left = barriers[:-1]
-        pending_right = barriers[1:]
+    pending_left = t_init_t.unsqueeze(0)
+    pending_right = t_final_t.unsqueeze(0)
 
     accepted_t_left: list[torch.Tensor] = []
     accepted_t_right: list[torch.Tensor] = []
@@ -271,7 +251,6 @@ def adaptive_quadrature(
     integral = all_contrib.sum(dim=0)
     integral_error_total = all_err.sum(dim=0)
     h_out = all_t_right - all_t_left
-    t_optimal = torch.cat([all_t_left, all_t_right[-1:]])
 
     final_denom = atol + rtol * integral.abs()
     final_ratio_per_d = all_err.abs() / final_denom
@@ -297,7 +276,6 @@ def adaptive_quadrature(
         sum_interval_errors=all_err,
         integral_error=integral_error_total,
         error_ratios=final_error_ratios,
-        t_optimal=t_optimal,
         n_iterations=n_iter,
         n_evaluations=n_evaluations,
     )
@@ -339,8 +317,8 @@ def fixed_quadrature(
 
     Returns:
         :class:`IntegralOutput`. ``integral_error``, ``sum_interval_errors``,
-        ``error_ratios``, and ``t_optimal`` are ``None`` (no error estimate
-        without an embedded rule).
+        and ``error_ratios`` are ``None`` (no error estimate without an
+        embedded rule).
     """
     device = resolve_device(device)
     t_init_t = normalize_bound(t_init, device, dtype, "t_init")

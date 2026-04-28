@@ -73,4 +73,3 @@ def test_integral_output_minimum_required_fields():
     assert out.method == "gk21"
     assert out.n_iterations == 0
     assert out.integral_error is None
-    assert out.t_optimal is None
