@@ -20,8 +20,8 @@ class IntegralOutput:
             Shape: [N, K] where N = number of (sub)intervals, K = nodes per rule.
         y: Integrand values at t. Shape: [N, K, D].
         h: Width of each (sub)interval, t_right - t_left. Shape: [N].
-        sum_intervals: Per-interval integral contributions. Shape: [N, D].
-        sum_interval_errors: Per-interval error estimates from the embedded rule.
+        interval_integrals: Per-interval integral contributions. Shape: [N, D].
+        interval_errors: Per-interval error estimates from the embedded rule.
             Shape: [N, D]. None for non-adaptive methods.
         integral_error: Estimated total error. Shape: [D]. None for non-adaptive.
         error_ratios: Per-interval error / tolerance. Shape: [N]. None for non-adaptive.
@@ -36,8 +36,8 @@ class IntegralOutput:
     t: torch.Tensor
     y: torch.Tensor
     h: torch.Tensor
-    sum_intervals: torch.Tensor
-    sum_interval_errors: torch.Tensor | None = None
+    interval_integrals: torch.Tensor
+    interval_errors: torch.Tensor | None = None
     integral_error: torch.Tensor | None = None
     error_ratios: torch.Tensor | None = None
     n_iterations: int = 0

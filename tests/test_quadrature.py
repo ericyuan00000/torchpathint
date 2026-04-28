@@ -72,7 +72,7 @@ def test_adaptive_sin_pi_smooth_one_iteration(method, cpu_device):
     )
     assert abs(out.integral.item() - 2.0) < 1e-10
     assert out.n_iterations == 1
-    assert out.sum_intervals.shape[0] == 1
+    assert out.interval_integrals.shape[0] == 1
 
 
 @pytest.mark.parametrize("method", METHOD_NAMES_ADAPTIVE)
@@ -106,7 +106,7 @@ def test_adaptive_gaussian_peak_refines(cpu_device):
     exact = math.sqrt(math.pi / 1000.0) * math.erf(math.sqrt(1000) * 0.5)
     assert abs(out.integral.item() - exact) < 1e-9
     assert out.n_iterations > 1
-    assert out.sum_intervals.shape[0] > 1
+    assert out.interval_integrals.shape[0] > 1
 
 
 # --- multi-dimensional integrand ---------------------------------------------
@@ -278,8 +278,8 @@ def test_adaptive_t_eval_shape_matches_method_K(cpu_device):
         rtol=1e-9,
         device=cpu_device,
     )
-    assert out.t.shape == (out.sum_intervals.shape[0], 31)
-    assert out.y.shape == (out.sum_intervals.shape[0], 31, 1)
+    assert out.t.shape == (out.interval_integrals.shape[0], 31)
+    assert out.y.shape == (out.interval_integrals.shape[0], 31, 1)
 
 
 def test_adaptive_intervals_cover_domain(cpu_device):

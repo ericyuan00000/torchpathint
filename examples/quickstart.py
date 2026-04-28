@@ -26,7 +26,7 @@ def example_smooth() -> None:
         rtol=1e-10,
     )
     print(f"  result   = {out.integral.item():.16f}")
-    print(f"  iters    = {out.n_iterations}, intervals = {out.sum_intervals.shape[0]}")
+    print(f"  iters    = {out.n_iterations}, intervals = {out.interval_integrals.shape[0]}")
     print(f"  evals    = {out.n_evaluations}")
 
 
@@ -45,7 +45,7 @@ def example_sharp_peak() -> None:
     print(f"  result   = {out.integral.item():.12e}")
     print(f"  exact    = {exact:.12e}")
     print(f"  err      = {abs(out.integral.item() - exact):.2e}")
-    print(f"  iters    = {out.n_iterations}, intervals = {out.sum_intervals.shape[0]}")
+    print(f"  iters    = {out.n_iterations}, intervals = {out.interval_integrals.shape[0]}")
 
 
 def example_vector_integrand() -> None:

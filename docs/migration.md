@@ -7,7 +7,7 @@ old library, this page is the diff.
 ## What stayed the same
 
 - `IntegralOutput` is still a dataclass with `integral`, `t`, `y`, `h`,
-  `sum_intervals`, `n_iterations`, `n_evaluations` fields. The semantics
+  `interval_integrals`, `n_iterations`, `n_evaluations` fields. The semantics
   of each field are unchanged where they exist.
 - The runtime is still pure PyTorch + numpy, no extra dependencies.
 - The integrator still evaluates one batch at a time and stores per-step

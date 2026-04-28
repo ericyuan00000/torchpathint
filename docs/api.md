@@ -124,14 +124,14 @@ Dataclass returned by every integrator. Notable fields:
 | `t` | `[N, K]` | Quadrature points actually evaluated, grouped by accepted interval. |
 | `y` | `[N, K, D]` | Integrand values at `t`. |
 | `h` | `[N]` | Width of each accepted interval. |
-| `sum_intervals` | `[N, D]` | Per-interval primary contributions. Sum over `N` = `integral`. |
-| `sum_interval_errors` | `[N, D]` or None | Per-interval embedded-rule differences. |
+| `interval_integrals` | `[N, D]` | Per-interval primary contributions. Sum over `N` = `integral`. |
+| `interval_errors` | `[N, D]` or None | Per-interval embedded-rule differences. |
 | `integral_error` | `[D]` or None | Total error estimate. |
 | `error_ratios` | `[N]` or None | Per-interval `ε_i / tol`. Useful diagnostic for "where did refinement land". |
 | `n_iterations` | int | Adaptive refinement iterations performed. |
 | `n_evaluations` | int | Total integrand evaluations. |
 
-For `gl*` methods, `sum_interval_errors`, `integral_error`, and
+For `gl*` methods, `interval_errors`, `integral_error`, and
 `error_ratios` are `None`, and `N = 1` (one trivial "interval").
 
 ## `Method` and `get_method`

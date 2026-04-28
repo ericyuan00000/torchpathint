@@ -272,8 +272,8 @@ def adaptive_quadrature(
         t=all_t_eval,
         y=all_y,
         h=h_out,
-        sum_intervals=all_contrib,
-        sum_interval_errors=all_err,
+        interval_integrals=all_contrib,
+        interval_errors=all_err,
         integral_error=integral_error_total,
         error_ratios=final_error_ratios,
         n_iterations=n_iter,
@@ -316,7 +316,7 @@ def fixed_quadrature(
         dtype: Floating-point dtype.
 
     Returns:
-        :class:`IntegralOutput`. ``integral_error``, ``sum_interval_errors``,
+        :class:`IntegralOutput`. ``integral_error``, ``interval_errors``,
         and ``error_ratios`` are ``None`` (no error estimate without an
         embedded rule).
     """
@@ -356,7 +356,7 @@ def fixed_quadrature(
         t=t_eval.unsqueeze(0),
         y=y.unsqueeze(0),
         h=h_full.unsqueeze(0),
-        sum_intervals=integral.unsqueeze(0),
+        interval_integrals=integral.unsqueeze(0),
         n_iterations=0,
         n_evaluations=t_eval.numel(),
     )
