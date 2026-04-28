@@ -23,7 +23,7 @@ def path_integral(
     atol: float = 1e-5,
     rtol: float = 1e-5,
     max_batch: int | None = None,
-    total_mem_usage: float | None = None,
+    memory_fraction: float | None = None,
     max_iter: int = 50,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
@@ -44,9 +44,9 @@ def path_integral(
         atol: Absolute tolerance (adaptive only; ignored for ``gl*``).
         rtol: Relative tolerance (adaptive only; ignored for ``gl*``).
         max_batch: Maximum integrand evaluations per ``f`` call. Applies
-            to both adaptive and fixed. Overrides ``total_mem_usage`` if
+            to both adaptive and fixed. Overrides ``memory_fraction`` if
             both are set.
-        total_mem_usage: Fraction of currently-free GPU memory
+        memory_fraction: Fraction of currently-free GPU memory
             (``(0, 1]``) the integrator may consume. When set with
             ``max_batch=None``, ``f`` is benchmarked at probe sizes to
             pick a ``max_batch`` that fits the budget. Ignored on CPU.
@@ -72,7 +72,7 @@ def path_integral(
             atol=atol,
             rtol=rtol,
             max_batch=max_batch,
-            total_mem_usage=total_mem_usage,
+            memory_fraction=memory_fraction,
             max_iter=max_iter,
             device=device,
             dtype=dtype,
@@ -84,7 +84,7 @@ def path_integral(
             t_final,
             method=method,
             max_batch=max_batch,
-            total_mem_usage=total_mem_usage,
+            memory_fraction=memory_fraction,
             device=device,
             dtype=dtype,
         )

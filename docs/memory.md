@@ -1,6 +1,6 @@
 # Memory probe
 
-`max_batch` and `total_mem_usage` are alternative ways to control peak GPU
+`max_batch` and `memory_fraction` are alternative ways to control peak GPU
 memory inside the integrator. This page explains what each one does and
 when to pick which.
 
@@ -27,18 +27,18 @@ spread across multiple `f` calls.
 Use `max_batch` when you already know the answer (e.g. you've seen
 `f` OOM at some size before).
 
-## `total_mem_usage`
+## `memory_fraction`
 
 Asks the integrator to *measure* the right `max_batch` instead of you
 guessing. The probe runs once per integrator call (before adaptive
 iteration starts) and is implemented in
 `torchpathint.memory.estimate_max_batch`:
 
-1. `total_mem_usage ∈ (0, 1]` is interpreted as a fraction of *currently
+1. `memory_fraction ∈ (0, 1]` is interpreted as a fraction of *currently
    free* GPU memory, computed as
    `free + (reserved − allocated)` so the PyTorch allocator's cached blocks
    count as available. On a dedicated GPU this is roughly
-   `total_mem_usage · total_memory`; on a shared GPU it scales with what is
+   `memory_fraction · total_memory`; on a shared GPU it scales with what is
    actually free right now.
 2. `f` is invoked at four growing input sizes — 8, 64, 512, 4096 — with
    `torch.cuda.reset_peak_memory_stats` between calls. Doubling keeps the
@@ -54,9 +54,9 @@ iteration starts) and is implemented in
 
 ## Interaction
 
-- If both `max_batch` and `total_mem_usage` are set, `max_batch` wins —
+- If both `max_batch` and `memory_fraction` are set, `max_batch` wins —
   the probe is skipped.
-- On CPU, `total_mem_usage` is ignored. CPU memory accounting through the
+- On CPU, `memory_fraction` is ignored. CPU memory accounting through the
   PyTorch allocator is unreliable and CPU OOMs are less catastrophic than
   GPU OOMs.
 - The probe consumes one probe-sized allocation per probe size before the

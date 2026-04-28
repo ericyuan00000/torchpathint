@@ -86,9 +86,9 @@ subinterval no longer has to fit. The per-evaluation chunking is the
 property the old `torchpathdiffeq` couldn't offer — it always evaluated
 every node of an interval together.
 
-When `total_mem_usage` is set instead of `max_batch`, the integrator probes
+When `memory_fraction` is set instead of `max_batch`, the integrator probes
 `f` at four growing input sizes (8, 64, 512, 4096), measures peak per-call
-allocation, and divides the budget (`total_mem_usage · free_GPU_memory`)
+allocation, and divides the budget (`memory_fraction · free_GPU_memory`)
 by per-evaluation cost to pick a `max_batch`. See [memory.md](memory.md)
 for the gory details.
 

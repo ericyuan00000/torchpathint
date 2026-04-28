@@ -57,7 +57,7 @@ it.
 out = path_integral(f, t_init, t_final, *,
                     method="gk21",
                     atol=1e-5, rtol=1e-5,
-                    max_batch=None, total_mem_usage=None,
+                    max_batch=None, memory_fraction=None,
                     max_iter=50,
                     device=None, dtype=torch.float64)
 ```
@@ -104,10 +104,10 @@ same chunking logic outside the integrators.
 ## `estimate_max_batch`
 
 ```python
-max_batch = estimate_max_batch(f, t_sample, device, total_mem_usage)
+max_batch = estimate_max_batch(f, t_sample, device, memory_fraction)
 ```
 
-The probe behind `total_mem_usage`. Returns `None` on CPU (no chunking),
+The probe behind `memory_fraction`. Returns `None` on CPU (no chunking),
 a positive `int` on CUDA when a per-evaluation cost was measured, or
 `None` on CUDA when nothing measurable was allocated. See
 [memory.md](memory.md) for details.
@@ -124,14 +124,14 @@ Dataclass returned by every integrator. Notable fields:
 | `t` | `[N, K]` | Quadrature points actually evaluated, grouped by accepted interval. |
 | `y` | `[N, K, D]` | Integrand values at `t`. |
 | `h` | `[N]` | Width of each accepted interval. |
-| `sum_intervals` | `[N, D]` | Per-interval primary contributions. Sum over `N` = `integral`. |
-| `sum_interval_errors` | `[N, D]` or None | Per-interval embedded-rule differences. |
+| `interval_integrals` | `[N, D]` | Per-interval primary contributions. Sum over `N` = `integral`. |
+| `interval_errors` | `[N, D]` or None | Per-interval embedded-rule differences. |
 | `integral_error` | `[D]` or None | Total error estimate. |
 | `error_ratios` | `[N]` or None | Per-interval `ε_i / tol`. Useful diagnostic for "where did refinement land". |
 | `n_iterations` | int | Adaptive refinement iterations performed. |
 | `n_evaluations` | int | Total integrand evaluations. |
 
-For `gl*` methods, `sum_interval_errors`, `integral_error`, and
+For `gl*` methods, `interval_errors`, `integral_error`, and
 `error_ratios` are `None`, and `N = 1` (one trivial "interval").
 
 ## `Method` and `get_method`

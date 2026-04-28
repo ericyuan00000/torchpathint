@@ -255,8 +255,8 @@ def test_fixed_vector_output(cpu_device):
 # ---------------------------------------------------------------------------
 
 
-def test_sum_intervals_equals_integral(cpu_device):
-    """sum_intervals.sum(0) reconstructs integral bit-for-bit (modulo float
+def test_interval_integrals_equals_integral(cpu_device):
+    """interval_integrals.sum(0) reconstructs integral bit-for-bit (modulo float
     summation order)."""
     out = path_integral(
         _gaussian_peak,
@@ -267,7 +267,7 @@ def test_sum_intervals_equals_integral(cpu_device):
         rtol=1e-9,
         device=cpu_device,
     )
-    diff = (out.sum_intervals.sum(dim=0) - out.integral).abs().max()
+    diff = (out.interval_integrals.sum(dim=0) - out.integral).abs().max()
     assert diff < 1e-12
 
 
@@ -315,7 +315,7 @@ def test_n_evaluations_counts_correctly(cpu_device):
     # Final accepted intervals * K is a lower bound; total includes rejected
     # intervals re-evaluated as splits.
     K = 15
-    assert out.n_evaluations >= out.sum_intervals.shape[0] * K
+    assert out.n_evaluations >= out.interval_integrals.shape[0] * K
     assert out.n_evaluations % K == 0
 
 

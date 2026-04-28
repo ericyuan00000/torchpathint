@@ -229,10 +229,10 @@ def _expand_gk(
     pos_asc = pos_nodes[:-1][::-1]  # 0.21, 0.40, ..., 0.99
     nodes_full = np.concatenate([neg, center, pos_asc])
 
-    wK_neg = pos_w_kronrod[:-1]
-    wK_center = pos_w_kronrod[-1:]
-    wK_pos = pos_w_kronrod[:-1][::-1]
-    w_kronrod_full = np.concatenate([wK_neg, wK_center, wK_pos])
+    w_kronrod_neg = pos_w_kronrod[:-1]
+    w_kronrod_center = pos_w_kronrod[-1:]
+    w_kronrod_pos = pos_w_kronrod[:-1][::-1]
+    w_kronrod_full = np.concatenate([w_kronrod_neg, w_kronrod_center, w_kronrod_pos])
 
     # Gauss weights: scatter pos_w_gauss into the Gauss-node positions of
     # the full array. In QUADPACK positive-half order (decreasing |x|), the
@@ -264,8 +264,8 @@ def _validate_gk_table(name: str) -> None:
     positions among the Kronrod nodes) integrate ``x^k`` exactly for
     ``k = 0 ... 2n-1``. A transcription error in any digit will fail this.
     """
-    pos_nodes, pos_wK, pos_wG, n_gauss = _GK_TABLES[name]
-    nodes, w_kronrod, w_gauss = _expand_gk(pos_nodes, pos_wK, pos_wG, n_gauss)
+    pos_nodes, pos_w_kronrod, pos_w_gauss, n_gauss = _GK_TABLES[name]
+    nodes, w_kronrod, w_gauss = _expand_gk(pos_nodes, pos_w_kronrod, pos_w_gauss, n_gauss)
 
     deg_K = 3 * n_gauss + 1
     deg_G = 2 * n_gauss - 1
@@ -312,8 +312,8 @@ def _build_gk_method(
     device: torch.device,
     dtype: torch.dtype,
 ) -> Method:
-    pos_nodes, pos_wK, pos_wG, n_gauss = _GK_TABLES[name]
-    nodes, w_kronrod, w_gauss = _expand_gk(pos_nodes, pos_wK, pos_wG, n_gauss)
+    pos_nodes, pos_w_kronrod, pos_w_gauss, n_gauss = _GK_TABLES[name]
+    nodes, w_kronrod, w_gauss = _expand_gk(pos_nodes, pos_w_kronrod, pos_w_gauss, n_gauss)
     w_error = w_kronrod - w_gauss
 
     return Method(

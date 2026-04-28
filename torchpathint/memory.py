@@ -8,7 +8,7 @@ its output dim ``D``), the device, and what else is on the GPU right now.
 
 ``estimate_max_batch`` measures ``f`` at a few growing input sizes, infers
 per-evaluation peak bytes, and divides the budget by it. The budget is
-``total_mem_usage * free_memory``: a fraction of what's currently available
+``memory_fraction * free_memory``: a fraction of what's currently available
 on the device. This matches the user's intent on shared GPUs (where
 "reserve a fraction of total" is meaningless because total is owned by
 other processes) and reduces to the dedicated-GPU case when free ≈ total.
@@ -42,13 +42,13 @@ _SAFETY_FACTOR = 2.0
 _PROBE_SIZES = (8, 64, 512, 4096)
 
 
-def _cuda_budget_bytes(device: torch.device, total_mem_usage: float) -> int:
+def _cuda_budget_bytes(device: torch.device, memory_fraction: float) -> int:
     """Bytes the integrator may consume under the user's memory cap.
 
-    Budget = ``total_mem_usage * available``, where ``available`` is the
+    Budget = ``memory_fraction * available``, where ``available`` is the
     currently free memory plus PyTorch's cached-but-unused memory (the
     allocator will hand the latter back to us). On a dedicated GPU this is
-    essentially ``total_mem_usage * total``; on a shared GPU it scales with
+    essentially ``memory_fraction * total``; on a shared GPU it scales with
     what's actually free right now, which is what the user almost always
     means by "use up to X% of memory."
     """
@@ -57,14 +57,14 @@ def _cuda_budget_bytes(device: torch.device, total_mem_usage: float) -> int:
         device
     )
     available = free + cached_unused
-    return max(0, int(total_mem_usage * available))
+    return max(0, int(memory_fraction * available))
 
 
 def estimate_max_batch(
     f: Callable[[torch.Tensor], torch.Tensor],
     t_sample: torch.Tensor,
     device: torch.device,
-    total_mem_usage: float,
+    memory_fraction: float,
 ) -> int | None:
     """Pick a ``max_batch`` value that fits ``f`` into the memory budget.
 
@@ -75,7 +75,7 @@ def estimate_max_batch(
             of the integration domain.
         device: Device to probe. Non-CUDA devices return ``None`` (no
             chunking).
-        total_mem_usage: Fraction of currently-available device memory the
+        memory_fraction: Fraction of currently-available device memory the
             integrator may consume, in ``(0, 1]``. ``0.9`` leaves a 10%
             headroom of free memory for kernel workspaces and concurrent
             allocations.
@@ -86,12 +86,12 @@ def estimate_max_batch(
         measured — e.g. an integrand that allocates nothing persistent).
 
     Raises:
-        ValueError: if ``total_mem_usage`` is outside ``(0, 1]``.
+        ValueError: if ``memory_fraction`` is outside ``(0, 1]``.
         RuntimeError: if the budget computes to zero — caller must reduce
             memory pressure or raise the cap before integrating.
     """
-    if not 0.0 < total_mem_usage <= 1.0:
-        raise ValueError(f"total_mem_usage must be in (0, 1]; got {total_mem_usage!r}.")
+    if not 0.0 < memory_fraction <= 1.0:
+        raise ValueError(f"memory_fraction must be in (0, 1]; got {memory_fraction!r}.")
 
     if device.type != "cuda":
         return None
@@ -104,7 +104,7 @@ def estimate_max_batch(
     torch.cuda.synchronize(device)
     torch.cuda.empty_cache()
 
-    budget = _cuda_budget_bytes(device, total_mem_usage)
+    budget = _cuda_budget_bytes(device, memory_fraction)
     if budget <= 0:
         free, total = torch.cuda.mem_get_info(device)
         raise RuntimeError(

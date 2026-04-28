@@ -68,7 +68,7 @@ def test_integral_output_minimum_required_fields():
         t=torch.zeros(0, 21),
         y=torch.zeros(0, 21, 2),
         h=torch.zeros(0),
-        sum_intervals=torch.zeros(0, 2),
+        interval_integrals=torch.zeros(0, 2),
     )
     assert out.method == "gk21"
     assert out.n_iterations == 0

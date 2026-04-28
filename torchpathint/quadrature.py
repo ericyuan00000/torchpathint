@@ -79,7 +79,7 @@ def adaptive_quadrature(
     atol: float = 1e-5,
     rtol: float = 1e-5,
     max_batch: int | None = None,
-    total_mem_usage: float | None = None,
+    memory_fraction: float | None = None,
     max_iter: int = 50,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
@@ -97,14 +97,14 @@ def adaptive_quadrature(
         atol: Absolute tolerance for per-interval error.
         rtol: Relative tolerance, scaled by the running integral magnitude.
         max_batch: Maximum integrand evaluations per ``f`` call. ``None``
-            means no chunking (one big batch) unless ``total_mem_usage`` is
+            means no chunking (one big batch) unless ``memory_fraction`` is
             set, in which case chunking is sized automatically. Chunks span
             interval boundaries.
-        total_mem_usage: Fraction of currently-free GPU memory
+        memory_fraction: Fraction of currently-free GPU memory
             (``(0, 1]``) the integrator may consume. When set and
             ``max_batch is None``, ``f`` is benchmarked at a few sizes to
             estimate per-evaluation cost, and ``max_batch`` is chosen so
-            chunks fit in ``total_mem_usage * free_memory``. Ignored on CPU.
+            chunks fit in ``memory_fraction * free_memory``. Ignored on CPU.
             ``max_batch`` overrides this if both are set.
         max_iter: Maximum refinement iterations. On the last iteration any
             still-over-tolerance intervals are force-accepted with a warning.
@@ -129,8 +129,8 @@ def adaptive_quadrature(
     weights_error = method_obj.weights_error
     K = nodes.numel()
 
-    if max_batch is None and total_mem_usage is not None:
-        max_batch = estimate_max_batch(f, t_init_t, device, total_mem_usage)
+    if max_batch is None and memory_fraction is not None:
+        max_batch = estimate_max_batch(f, t_init_t, device, memory_fraction)
 
     pending_left = t_init_t.unsqueeze(0)
     pending_right = t_final_t.unsqueeze(0)
@@ -272,8 +272,8 @@ def adaptive_quadrature(
         t=all_t_eval,
         y=all_y,
         h=h_out,
-        sum_intervals=all_contrib,
-        sum_interval_errors=all_err,
+        interval_integrals=all_contrib,
+        interval_errors=all_err,
         integral_error=integral_error_total,
         error_ratios=final_error_ratios,
         n_iterations=n_iter,
@@ -288,7 +288,7 @@ def fixed_quadrature(
     *,
     method: str = "gl15",
     max_batch: int | None = None,
-    total_mem_usage: float | None = None,
+    memory_fraction: float | None = None,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
 ) -> IntegralOutput:
@@ -306,8 +306,8 @@ def fixed_quadrature(
         method: Non-adaptive rule name ``"gl<n>"`` for any positive ``n``.
         max_batch: Maximum evaluations per ``f`` call. The rule's K nodes
             are chunked across multiple ``f`` calls if K exceeds this.
-            ``None`` means no chunking unless ``total_mem_usage`` is set.
-        total_mem_usage: Fraction of currently-free GPU memory
+            ``None`` means no chunking unless ``memory_fraction`` is set.
+        memory_fraction: Fraction of currently-free GPU memory
             (``(0, 1]``) the integrator may consume. Triggers automatic
             ``max_batch`` sizing via a probe of ``f``'s per-evaluation
             cost. Ignored on CPU. ``max_batch`` overrides this if both
@@ -316,7 +316,7 @@ def fixed_quadrature(
         dtype: Floating-point dtype.
 
     Returns:
-        :class:`IntegralOutput`. ``integral_error``, ``sum_interval_errors``,
+        :class:`IntegralOutput`. ``integral_error``, ``interval_errors``,
         and ``error_ratios`` are ``None`` (no error estimate without an
         embedded rule).
     """
@@ -332,8 +332,8 @@ def fixed_quadrature(
     nodes = method_obj.nodes
     weights = method_obj.weights
 
-    if max_batch is None and total_mem_usage is not None:
-        max_batch = estimate_max_batch(f, t_init_t, device, total_mem_usage)
+    if max_batch is None and memory_fraction is not None:
+        max_batch = estimate_max_batch(f, t_init_t, device, memory_fraction)
 
     h_half = (t_final_t - t_init_t) / 2
     t_mid = (t_final_t + t_init_t) / 2
@@ -356,7 +356,7 @@ def fixed_quadrature(
         t=t_eval.unsqueeze(0),
         y=y.unsqueeze(0),
         h=h_full.unsqueeze(0),
-        sum_intervals=integral.unsqueeze(0),
+        interval_integrals=integral.unsqueeze(0),
         n_iterations=0,
         n_evaluations=t_eval.numel(),
     )
