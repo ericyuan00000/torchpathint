@@ -78,9 +78,10 @@ from torchpathint import (
 ```
 
 `path_integral(f, t_init, t_final, *, method="gk21", atol=1e-5, rtol=1e-5,
-t=None, max_batch=None, max_iter=50, device=None, dtype=torch.float64)`
-returns an `IntegralOutput` with the integral, error estimate, mesh, and
-per-interval diagnostics. See the function docstring for full details.
+t=None, max_batch=None, total_mem_usage=None, max_iter=50, device=None,
+dtype=torch.float64)` returns an `IntegralOutput` with the integral, error
+estimate, mesh, and per-interval diagnostics. See the function docstring
+for full details.
 
 ### Integrand contract
 
@@ -102,6 +103,18 @@ evaluations and passes it to `f`. Use `max_batch` to chunk that tensor
 into fixed-size pieces — chunks may span interval boundaries, so even a
 single `gk31` interval can be evaluated across multiple `f` calls if
 needed.
+
+For automatic sizing, pass `total_mem_usage=<frac>` instead. `f` is
+benchmarked at a few input sizes to estimate per-evaluation peak bytes,
+and `max_batch` is chosen so chunks fit in `frac * free_GPU_memory`.
+
+```python
+out = path_integral(my_expensive_f, 0.0, 1.0, total_mem_usage=0.9)
+```
+
+CPU is treated as unbounded — `total_mem_usage` is ignored there. If
+both `max_batch` and `total_mem_usage` are set, `max_batch` wins (the
+probe is skipped).
 
 ### Warm start
 

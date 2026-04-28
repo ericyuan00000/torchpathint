@@ -114,6 +114,36 @@ def example_memory_chunking() -> None:
     print(f"  total evaluations       = {out.n_evaluations}")
 
 
+def example_auto_batch_sizing() -> None:
+    """Let the integrator pick max_batch by probing GPU memory usage."""
+    print("\n[auto-batch] sized via total_mem_usage probe (CUDA only)")
+    if not torch.cuda.is_available():
+        print("  CUDA not available — skipping; on CPU, total_mem_usage is a no-op.")
+        return
+
+    device = torch.device("cuda")
+
+    def f_heavy(t: torch.Tensor) -> torch.Tensor:
+        # 1024-wide temporary per evaluation, summed back to scalar output.
+        big = t.unsqueeze(-1) * torch.linspace(
+            0.0, 1.0, 1024, device=t.device, dtype=t.dtype
+        )
+        return big.sum(dim=-1, keepdim=True)
+
+    out = path_integral(
+        f_heavy,
+        0.0,
+        1.0,
+        method="gk21",
+        atol=1e-9,
+        rtol=1e-9,
+        device=device,
+        total_mem_usage=0.5,  # use up to 50% of currently-free GPU memory
+    )
+    print(f"  result      = {out.integral.item():.12e}")
+    print(f"  evaluations = {out.n_evaluations}")
+
+
 if __name__ == "__main__":
     torch.set_default_dtype(torch.float64)
     example_smooth()
@@ -121,3 +151,4 @@ if __name__ == "__main__":
     example_vector_integrand()
     example_warm_start()
     example_memory_chunking()
+    example_auto_batch_sizing()
