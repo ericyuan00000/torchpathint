@@ -25,10 +25,6 @@ class IntegralOutput:
             Shape: [N, D]. None for non-adaptive methods.
         integral_error: Estimated total error. Shape: [D]. None for non-adaptive.
         error_ratios: Per-interval error / tolerance. Shape: [N]. None for non-adaptive.
-        t_optimal: Full converged interval-barrier mesh, including ``t_init``
-            and ``t_final`` at the ends. Shape: [N+1]. Pass ``t_optimal[1:-1]``
-            (the interior barriers) as ``t=`` on a follow-up integration of a
-            similar integrand to warm-start. None for non-adaptive.
         n_iterations: Adaptive refinement iterations performed (0 for non-adaptive).
         n_evaluations: Total number of integrand evaluations.
     """
@@ -44,7 +40,6 @@ class IntegralOutput:
     sum_interval_errors: torch.Tensor | None = None
     integral_error: torch.Tensor | None = None
     error_ratios: torch.Tensor | None = None
-    t_optimal: torch.Tensor | None = None
     n_iterations: int = 0
     n_evaluations: int = 0
 

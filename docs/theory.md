@@ -51,9 +51,9 @@ same `2n + 1` evaluations.
 
 ## Adaptive refinement
 
-`adaptive_quadrature` starts with a single subinterval `[t_init, t_final]`
-(or a user-supplied interior mesh), evaluates the chosen GK rule on every
-pending subinterval, and judges each one by the ratio
+`adaptive_quadrature` starts with a single subinterval `[t_init, t_final]`,
+evaluates the chosen GK rule on every pending subinterval, and judges each
+one by the ratio
 
 ```
 ε_i = h_i/2 · |Σ_k (w_k^K − w_k^G) · f(t_{i,k})|
@@ -91,18 +91,6 @@ When `total_mem_usage` is set instead of `max_batch`, the integrator probes
 allocation, and divides the budget (`total_mem_usage · free_GPU_memory`)
 by per-evaluation cost to pick a `max_batch`. See [memory.md](memory.md)
 for the gory details.
-
-## Warm starting
-
-`adaptive_quadrature` returns the converged barrier mesh as
-`IntegralOutput.t_optimal`. Pass `t_optimal[1:-1]` (the interior barriers)
-as the `t=` argument on a subsequent integration of a similar integrand:
-the integrator now starts from a fine mesh and typically converges in one
-iteration, skipping the splits.
-
-This is most useful inside an outer loop — training, line-search,
-parameter sweeps — where the integrand changes shape only slowly between
-calls.
 
 ## What this library is not
 

@@ -81,14 +81,8 @@ out = path_integral(
 ```
 
 There is no persistent solver object. The integrator is functional —
-construct the rule, run, return. If you previously held a solver around
-to reuse mesh state, use the new warm-start path:
-
-```python
-out1 = path_integral(f, t0, t1, method="gk21", atol=1e-9, rtol=1e-9)
-out2 = path_integral(f, t0, t1, method="gk21", atol=1e-9, rtol=1e-9,
-                     t=out1.t_optimal[1:-1])
-```
+construct the rule, run, return. Mesh state is not reused across calls;
+each call starts from a single subinterval and adapts from scratch.
 
 ### Memory control
 
@@ -112,5 +106,5 @@ permissive about 1-d shape-1 tensors; the new one rejects them. Replace
 3. Code that branched on `IntegralOutput.gradient_taken`. That field is
    gone; if you cared about gradient flow, set up `torch.autograd.grad`
    around the call.
-4. Reuse of solver objects. Replace with bare functional calls and warm
-   start via `t=`.
+4. Reuse of solver objects or warm-started meshes. Replace with bare
+   functional calls; each call adapts from scratch.

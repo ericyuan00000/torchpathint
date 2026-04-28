@@ -38,8 +38,8 @@ out = path_integral(f, 0.0, math.pi)
 print(out.integral)   # tensor([2.0000])  ≈ ∫_0^π sin(t) dt = 2
 ```
 
-A guided tour with sharper integrands, vector outputs, and warm starts is
-in [`examples/quickstart.py`](examples/quickstart.py).
+A guided tour with sharper integrands and vector outputs is in
+[`examples/quickstart.py`](examples/quickstart.py).
 
 ## Documentation
 

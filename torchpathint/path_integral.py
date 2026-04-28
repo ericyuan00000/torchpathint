@@ -22,7 +22,6 @@ def path_integral(
     method: str = "gk21",
     atol: float = 1e-5,
     rtol: float = 1e-5,
-    t: torch.Tensor | None = None,
     max_batch: int | None = None,
     total_mem_usage: float | None = None,
     max_iter: int = 50,
@@ -44,9 +43,6 @@ def path_integral(
             non-adaptive Gauss-Legendre.
         atol: Absolute tolerance (adaptive only; ignored for ``gl*``).
         rtol: Relative tolerance (adaptive only; ignored for ``gl*``).
-        t: Optional initial barrier mesh (adaptive only; ignored for
-            ``gl*``). Pass ``IntegralOutput.t_optimal[1:-1]`` from a prior
-            call to warm-start.
         max_batch: Maximum integrand evaluations per ``f`` call. Applies
             to both adaptive and fixed. Overrides ``total_mem_usage`` if
             both are set.
@@ -59,8 +55,8 @@ def path_integral(
         dtype: Floating-point dtype. Defaults to ``torch.float64``.
 
     Returns:
-        :class:`IntegralOutput`. For ``gl*`` methods, the error fields and
-        ``t_optimal`` are ``None``.
+        :class:`IntegralOutput`. For ``gl*`` methods, the error fields are
+        ``None``.
 
     Raises:
         ValueError: If ``method`` is neither a known ``gk*`` nor a ``gl<n>``
@@ -75,7 +71,6 @@ def path_integral(
             method=method,
             atol=atol,
             rtol=rtol,
-            t=t,
             max_batch=max_batch,
             total_mem_usage=total_mem_usage,
             max_iter=max_iter,

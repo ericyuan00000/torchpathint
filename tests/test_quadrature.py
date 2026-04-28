@@ -73,7 +73,6 @@ def test_adaptive_sin_pi_smooth_one_iteration(method, cpu_device):
     assert abs(out.integral.item() - 2.0) < 1e-10
     assert out.n_iterations == 1
     assert out.sum_intervals.shape[0] == 1
-    assert out.t_optimal is not None
 
 
 @pytest.mark.parametrize("method", METHOD_NAMES_ADAPTIVE)
@@ -160,36 +159,6 @@ def test_adaptive_chunk_smaller_than_K(cpu_device):
     assert abs(out.integral.item() - exact) < 1e-8
 
 
-# --- warm start --------------------------------------------------------------
-
-
-def test_warm_start_reuses_mesh(cpu_device):
-    """The mesh from one converged call should converge in 1 iteration on a
-    similar follow-up integral."""
-    out1 = adaptive_quadrature(
-        gaussian_peak,
-        0.0,
-        1.0,
-        method="gk21",
-        atol=1e-9,
-        rtol=1e-9,
-        device=cpu_device,
-    )
-    interior = out1.t_optimal[1:-1]
-    out2 = adaptive_quadrature(
-        gaussian_peak,
-        0.0,
-        1.0,
-        method="gk21",
-        atol=1e-9,
-        rtol=1e-9,
-        t=interior,
-        device=cpu_device,
-    )
-    assert out2.n_iterations == 1
-    assert out2.sum_intervals.shape[0] == out1.sum_intervals.shape[0]
-
-
 # --- fixed_quadrature --------------------------------------------------------
 
 
@@ -206,7 +175,6 @@ def test_fixed_sin_pi(n, cpu_device):
     assert out.n_evaluations == n
     assert out.integral_error is None
     assert out.error_ratios is None
-    assert out.t_optimal is None
 
 
 def test_fixed_chunked_matches_unchunked(cpu_device):
@@ -228,18 +196,6 @@ def test_adaptive_rejects_fixed_method(cpu_device):
 def test_fixed_rejects_adaptive_method(cpu_device):
     with pytest.raises(ValueError, match="is adaptive"):
         fixed_quadrature(sin_integrand, 0.0, 1.0, method="gk21", device=cpu_device)
-
-
-def test_adaptive_rejects_2d_t(cpu_device):
-    with pytest.raises(ValueError, match="must be 1-d"):
-        adaptive_quadrature(
-            sin_integrand,
-            0.0,
-            math.pi,
-            method="gk21",
-            t=torch.zeros(3, 2),
-            device=cpu_device,
-        )
 
 
 def test_adaptive_rejects_wrong_output_shape(cpu_device):
@@ -326,22 +282,8 @@ def test_adaptive_t_eval_shape_matches_method_K(cpu_device):
     assert out.y.shape == (out.sum_intervals.shape[0], 31, 1)
 
 
-def test_adaptive_t_optimal_length(cpu_device):
-    """t_optimal is one longer than the accepted-interval count."""
-    out = adaptive_quadrature(
-        gaussian_peak,
-        0.0,
-        1.0,
-        method="gk21",
-        atol=1e-9,
-        rtol=1e-9,
-        device=cpu_device,
-    )
-    assert out.t_optimal.numel() == out.sum_intervals.shape[0] + 1
-
-
 def test_adaptive_intervals_cover_domain(cpu_device):
-    """Adjacent accepted intervals share a barrier and cover [t_init, t_final]."""
+    """Interval widths sum to the full domain with no gaps or overlaps."""
     out = adaptive_quadrature(
         gaussian_peak,
         0.0,
@@ -351,28 +293,8 @@ def test_adaptive_intervals_cover_domain(cpu_device):
         rtol=1e-9,
         device=cpu_device,
     )
-    barriers = out.t_optimal
-    assert barriers[0].item() == 0.0
-    assert barriers[-1].item() == 1.0
-    # No gaps, no overlaps.
-    assert torch.all(barriers[1:] - barriers[:-1] > 0)
-
-
-def test_adaptive_t_eval_lies_inside_intervals(cpu_device):
-    """Each row of t (per-interval node positions) lies inside that interval."""
-    out = adaptive_quadrature(
-        sin_integrand,
-        0.0,
-        math.pi,
-        method="gk21",
-        atol=1e-10,
-        rtol=1e-10,
-        device=cpu_device,
-    )
-    barriers = out.t_optimal
-    for i in range(out.t.shape[0]):
-        assert torch.all(out.t[i] >= barriers[i])
-        assert torch.all(out.t[i] <= barriers[i + 1])
+    assert torch.all(out.h > 0)
+    assert abs(out.h.sum().item() - 1.0) < 1e-12
 
 
 # --- fixed_quadrature input validation --------------------------------------
