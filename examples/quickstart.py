@@ -81,9 +81,9 @@ def example_memory_chunking() -> None:
 
 def example_auto_batch_sizing() -> None:
     """Let the integrator pick max_batch by probing GPU memory usage."""
-    print("\n[auto-batch] sized via total_mem_usage probe (CUDA only)")
+    print("\n[auto-batch] sized via memory_fraction probe (CUDA only)")
     if not torch.cuda.is_available():
-        print("  CUDA not available — skipping; on CPU, total_mem_usage is a no-op.")
+        print("  CUDA not available — skipping; on CPU, memory_fraction is a no-op.")
         return
 
     device = torch.device("cuda")
@@ -103,7 +103,7 @@ def example_auto_batch_sizing() -> None:
         atol=1e-9,
         rtol=1e-9,
         device=device,
-        total_mem_usage=0.5,  # use up to 50% of currently-free GPU memory
+        memory_fraction=0.5,  # use up to 50% of currently-free GPU memory
     )
     print(f"  result      = {out.integral.item():.12e}")
     print(f"  evaluations = {out.n_evaluations}")

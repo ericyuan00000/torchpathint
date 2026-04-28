@@ -41,21 +41,21 @@ def heavy_integrand(scale: int):
 # --- estimate_max_batch: input validation ------------------------------------
 
 
-def test_estimate_max_batch_rejects_bad_total_mem_usage():
+def test_estimate_max_batch_rejects_bad_memory_fraction():
     device = torch.device("cpu")
     t = torch.tensor(0.0, dtype=torch.float64)
-    with pytest.raises(ValueError, match="total_mem_usage"):
-        estimate_max_batch(sin_integrand, t, device, total_mem_usage=0.0)
-    with pytest.raises(ValueError, match="total_mem_usage"):
-        estimate_max_batch(sin_integrand, t, device, total_mem_usage=1.5)
-    with pytest.raises(ValueError, match="total_mem_usage"):
-        estimate_max_batch(sin_integrand, t, device, total_mem_usage=-0.1)
+    with pytest.raises(ValueError, match="memory_fraction"):
+        estimate_max_batch(sin_integrand, t, device, memory_fraction=0.0)
+    with pytest.raises(ValueError, match="memory_fraction"):
+        estimate_max_batch(sin_integrand, t, device, memory_fraction=1.5)
+    with pytest.raises(ValueError, match="memory_fraction"):
+        estimate_max_batch(sin_integrand, t, device, memory_fraction=-0.1)
 
 
 def test_estimate_max_batch_returns_none_on_cpu():
     device = torch.device("cpu")
     t = torch.tensor(0.0, dtype=torch.float64)
-    assert estimate_max_batch(sin_integrand, t, device, total_mem_usage=0.5) is None
+    assert estimate_max_batch(sin_integrand, t, device, memory_fraction=0.5) is None
 
 
 def test_estimate_max_batch_rejects_non_scalar_sample():
@@ -66,13 +66,13 @@ def test_estimate_max_batch_rejects_non_scalar_sample():
     device = torch.device("cuda")
     t_bad = torch.zeros(3, device=device, dtype=torch.float64)
     with pytest.raises(ValueError, match="0-d tensor"):
-        estimate_max_batch(sin_integrand, t_bad, device, total_mem_usage=0.5)
+        estimate_max_batch(sin_integrand, t_bad, device, memory_fraction=0.5)
 
 
-# --- path_integral: total_mem_usage on CPU is silently ignored ---------------
+# --- path_integral: memory_fraction on CPU is silently ignored ---------------
 
 
-def test_path_integral_total_mem_usage_on_cpu_ignored():
+def test_path_integral_memory_fraction_on_cpu_ignored():
     out = path_integral(
         sin_integrand,
         0.0,
@@ -81,29 +81,29 @@ def test_path_integral_total_mem_usage_on_cpu_ignored():
         atol=1e-9,
         rtol=1e-9,
         device="cpu",
-        total_mem_usage=0.5,
+        memory_fraction=0.5,
     )
     assert torch.allclose(out.integral, torch.tensor([2.0], dtype=torch.float64))
 
 
-def test_fixed_quadrature_total_mem_usage_on_cpu_ignored():
+def test_fixed_quadrature_memory_fraction_on_cpu_ignored():
     out = fixed_quadrature(
         sin_integrand,
         0.0,
         math.pi,
         method="gl15",
         device="cpu",
-        total_mem_usage=0.5,
+        memory_fraction=0.5,
     )
     assert torch.allclose(
         out.integral, torch.tensor([2.0], dtype=torch.float64), atol=1e-12
     )
 
 
-# --- max_batch overrides total_mem_usage -------------------------------------
+# --- max_batch overrides memory_fraction -------------------------------------
 
 
-def test_max_batch_overrides_total_mem_usage(monkeypatch):
+def test_max_batch_overrides_memory_fraction(monkeypatch):
     """If the user supplies max_batch explicitly, the probe is never run."""
 
     def boom(*_a, **_kw):
@@ -119,7 +119,7 @@ def test_max_batch_overrides_total_mem_usage(monkeypatch):
         rtol=1e-9,
         device="cpu",
         max_batch=4,
-        total_mem_usage=0.5,
+        memory_fraction=0.5,
     )
     assert torch.allclose(out.integral, torch.tensor([2.0], dtype=torch.float64))
 
@@ -131,7 +131,7 @@ def test_max_batch_overrides_total_mem_usage(monkeypatch):
 def test_estimate_max_batch_returns_positive_int_on_cuda():
     device = torch.device("cuda")
     t = torch.tensor(0.5, device=device, dtype=torch.float64)
-    mb = estimate_max_batch(heavy_integrand(scale=4096), t, device, total_mem_usage=0.5)
+    mb = estimate_max_batch(heavy_integrand(scale=4096), t, device, memory_fraction=0.5)
     assert isinstance(mb, int)
     assert mb > 0
 
@@ -152,7 +152,7 @@ def test_auto_batch_path_integral_matches_full_batch():
         atol=1e-9,
         rtol=1e-9,
         device=device,
-        total_mem_usage=0.5,
+        memory_fraction=0.5,
     )
     assert torch.allclose(out_full.integral, out_auto.integral, atol=1e-12, rtol=1e-12)
 
@@ -163,8 +163,8 @@ def test_auto_batch_picks_smaller_batch_when_budget_is_tight():
     device = torch.device("cuda")
     t = torch.tensor(0.5, device=device, dtype=torch.float64)
     f = heavy_integrand(scale=4096)
-    mb_loose = estimate_max_batch(f, t, device, total_mem_usage=0.9)
-    mb_tight = estimate_max_batch(f, t, device, total_mem_usage=0.05)
+    mb_loose = estimate_max_batch(f, t, device, memory_fraction=0.9)
+    mb_tight = estimate_max_batch(f, t, device, memory_fraction=0.05)
     if mb_loose is None or mb_tight is None:
         pytest.skip("integrand allocated no measurable memory")
     assert mb_tight <= mb_loose
@@ -177,7 +177,7 @@ def test_estimate_max_batch_returns_none_when_unmeasurable():
     device = torch.device("cuda")
     t = torch.tensor(0.5, device=device, dtype=torch.float64)
     # Scalar-output trivial op — likely no measurable allocation.
-    result = estimate_max_batch(sin_integrand, t, device, total_mem_usage=0.5)
+    result = estimate_max_batch(sin_integrand, t, device, memory_fraction=0.5)
     # Either None (no measurable cost) or a very large int — both are valid.
     assert result is None or (isinstance(result, int) and result > 0)
 
@@ -216,7 +216,7 @@ def test_auto_batch_actually_chunks_inside_iteration():
     # Standalone probe: must report a max_batch < K so the integrator chunks.
     t_sample = torch.tensor(0.5, device=device, dtype=torch.float64)
     mb = estimate_max_batch(
-        heavy_integrand(scale), t_sample, device, total_mem_usage=0.5
+        heavy_integrand(scale), t_sample, device, memory_fraction=0.5
     )
     assert mb is not None, "probe should measure a non-zero per-eval cost"
     assert mb < K, (
@@ -248,7 +248,7 @@ def test_auto_batch_actually_chunks_inside_iteration():
         atol=1e-9,
         rtol=1e-9,
         device=device,
-        total_mem_usage=0.5,
+        memory_fraction=0.5,
     )
     in_integration = False
     auto_calls = integrator_calls

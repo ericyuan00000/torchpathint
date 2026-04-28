@@ -57,7 +57,7 @@ it.
 out = path_integral(f, t_init, t_final, *,
                     method="gk21",
                     atol=1e-5, rtol=1e-5,
-                    max_batch=None, total_mem_usage=None,
+                    max_batch=None, memory_fraction=None,
                     max_iter=50,
                     device=None, dtype=torch.float64)
 ```
@@ -104,10 +104,10 @@ same chunking logic outside the integrators.
 ## `estimate_max_batch`
 
 ```python
-max_batch = estimate_max_batch(f, t_sample, device, total_mem_usage)
+max_batch = estimate_max_batch(f, t_sample, device, memory_fraction)
 ```
 
-The probe behind `total_mem_usage`. Returns `None` on CPU (no chunking),
+The probe behind `memory_fraction`. Returns `None` on CPU (no chunking),
 a positive `int` on CUDA when a per-evaluation cost was measured, or
 `None` on CUDA when nothing measurable was allocated. See
 [memory.md](memory.md) for details.
