@@ -24,6 +24,7 @@ def path_integral(
     rtol: float = 1e-5,
     t: torch.Tensor | None = None,
     max_batch: int | None = None,
+    total_mem_usage: float | None = None,
     max_iter: int = 50,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
@@ -47,7 +48,12 @@ def path_integral(
             ``gl*``). Pass ``IntegralOutput.t_optimal[1:-1]`` from a prior
             call to warm-start.
         max_batch: Maximum integrand evaluations per ``f`` call. Applies
-            to both adaptive and fixed.
+            to both adaptive and fixed. Overrides ``total_mem_usage`` if
+            both are set.
+        total_mem_usage: Fraction of currently-free GPU memory
+            (``(0, 1]``) the integrator may consume. When set with
+            ``max_batch=None``, ``f`` is benchmarked at probe sizes to
+            pick a ``max_batch`` that fits the budget. Ignored on CPU.
         max_iter: Maximum refinement iterations (adaptive only).
         device: Device for internal tensors. Defaults to CUDA if available.
         dtype: Floating-point dtype. Defaults to ``torch.float64``.
@@ -71,6 +77,7 @@ def path_integral(
             rtol=rtol,
             t=t,
             max_batch=max_batch,
+            total_mem_usage=total_mem_usage,
             max_iter=max_iter,
             device=device,
             dtype=dtype,
@@ -82,6 +89,7 @@ def path_integral(
             t_final,
             method=method,
             max_batch=max_batch,
+            total_mem_usage=total_mem_usage,
             device=device,
             dtype=dtype,
         )

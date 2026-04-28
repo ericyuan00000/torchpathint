@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING
 import torch
 
 from .base import IntegralOutput, normalize_bound, resolve_device
+from .memory import estimate_max_batch
 from .methods import get_method
 
 if TYPE_CHECKING:
@@ -79,6 +80,7 @@ def adaptive_quadrature(
     rtol: float = 1e-5,
     t: torch.Tensor | None = None,
     max_batch: int | None = None,
+    total_mem_usage: float | None = None,
     max_iter: int = 50,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
@@ -99,8 +101,15 @@ def adaptive_quadrature(
             integrator inserts ``t_init`` and ``t_final`` and sorts. Useful
             for warm-starting from a previous ``IntegralOutput.t_optimal``.
         max_batch: Maximum integrand evaluations per ``f`` call. ``None``
-            means no chunking (one big batch). Chunks span interval
-            boundaries.
+            means no chunking (one big batch) unless ``total_mem_usage`` is
+            set, in which case chunking is sized automatically. Chunks span
+            interval boundaries.
+        total_mem_usage: Fraction of currently-free GPU memory
+            (``(0, 1]``) the integrator may consume. When set and
+            ``max_batch is None``, ``f`` is benchmarked at a few sizes to
+            estimate per-evaluation cost, and ``max_batch`` is chosen so
+            chunks fit in ``total_mem_usage * free_memory``. Ignored on CPU.
+            ``max_batch`` overrides this if both are set.
         max_iter: Maximum refinement iterations. On the last iteration any
             still-over-tolerance intervals are force-accepted with a warning.
         device: Device for internal tensors. Defaults to CUDA if available.
@@ -124,6 +133,9 @@ def adaptive_quadrature(
     weights = method_obj.weights
     weights_error = method_obj.weights_error
     K = nodes.numel()
+
+    if max_batch is None and total_mem_usage is not None:
+        max_batch = estimate_max_batch(f, t_init_t, device, total_mem_usage)
 
     # Initial pending intervals
     if t is None:
@@ -295,6 +307,7 @@ def fixed_quadrature(
     *,
     method: str = "gl15",
     max_batch: int | None = None,
+    total_mem_usage: float | None = None,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
 ) -> IntegralOutput:
@@ -312,6 +325,12 @@ def fixed_quadrature(
         method: Non-adaptive rule name ``"gl<n>"`` for any positive ``n``.
         max_batch: Maximum evaluations per ``f`` call. The rule's K nodes
             are chunked across multiple ``f`` calls if K exceeds this.
+            ``None`` means no chunking unless ``total_mem_usage`` is set.
+        total_mem_usage: Fraction of currently-free GPU memory
+            (``(0, 1]``) the integrator may consume. Triggers automatic
+            ``max_batch`` sizing via a probe of ``f``'s per-evaluation
+            cost. Ignored on CPU. ``max_batch`` overrides this if both
+            are set.
         device: Device for internal tensors.
         dtype: Floating-point dtype.
 
@@ -331,6 +350,9 @@ def fixed_quadrature(
         )
     nodes = method_obj.nodes
     weights = method_obj.weights
+
+    if max_batch is None and total_mem_usage is not None:
+        max_batch = estimate_max_batch(f, t_init_t, device, total_mem_usage)
 
     h_half = (t_final_t - t_init_t) / 2
     t_mid = (t_final_t + t_init_t) / 2
