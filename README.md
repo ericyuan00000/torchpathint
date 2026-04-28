@@ -51,8 +51,9 @@ print(out.n_iterations)    # 1   — sin is smooth, one Kronrod application conv
 ```
 
 A self-contained tour of the API is in [`examples/quickstart.py`](examples/quickstart.py).
-For more depth, see [`docs/`](docs/index.md): theory notes, full API reference,
-the memory probe, and a migration guide from `torchpathdiffeq`.
+Full documentation — theory notes, API reference, the memory probe, and a
+migration guide from `torchpathdiffeq` — is at
+<https://ericyuan00000.github.io/torchpathint/> (sources in [`docs/`](docs/index.md)).
 
 ## Methods
 
@@ -149,8 +150,15 @@ out2 = path_integral(f, 0.0, 1.0, method="gk21", atol=1e-9, rtol=1e-9,
 
 ```bash
 pip install -e ".[dev]"
-pytest                  # 66 tests, ~0.2s on CPU
+pytest                  # 154 tests, ~1s on CPU
 ruff check . && ruff format --check .
+```
+
+Build the docs site locally:
+
+```bash
+pip install -e ".[docs]"
+mkdocs serve            # http://127.0.0.1:8000 with live reload
 ```
 
 ## License

@@ -26,6 +26,7 @@ dependencies = ["numpy", "torch"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.4.0", "pytest-cov>=3.10.0", "mypy", "pre-commit", "ruff>=0.4.0", "typos"]
+docs = ["mkdocs>=1.6", "mkdocs-material>=9.5"]
 
 [tool.setuptools.package-data]
 torchpathint = ["py.typed"]
