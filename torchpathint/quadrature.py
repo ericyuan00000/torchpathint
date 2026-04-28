@@ -162,7 +162,9 @@ def adaptive_quadrature(
     accepted_y: list[torch.Tensor] = []
     accepted_t_eval: list[torch.Tensor] = []
 
-    accepted_integral: torch.Tensor | None = None  # [D], running sum
+    # Running sum over accepted intervals, shape [D]. Lazily allocated on the
+    # first iteration once we learn D from f's output.
+    accepted_integral: torch.Tensor | None = None
     n_evaluations = 0
     n_iter = 0
     forced_partial = False
@@ -171,11 +173,14 @@ def adaptive_quadrature(
         n_iter += 1
         n_pending = pending_left.numel()
 
+        # Map the rule's [-1, 1] nodes into each pending interval's t range.
         h_half = (pending_right - pending_left) / 2
         t_mid = (pending_right + pending_left) / 2
-        # [n_pending, K] — node positions in original t space
+        # [n_pending, K] node positions in original t space.
         t_eval_pending = h_half.unsqueeze(-1) * nodes.unsqueeze(0) + t_mid.unsqueeze(-1)
 
+        # Single batched call: every pending interval's K nodes are evaluated
+        # together, optionally chunked across f calls when max_batch is set.
         t_flat = t_eval_pending.reshape(-1)
         y_flat = evaluate_chunked(f, t_flat, max_batch)
         if y_flat.dim() != 2 or y_flat.shape[0] != t_flat.numel():
@@ -187,7 +192,11 @@ def adaptive_quadrature(
         D = y_flat.shape[-1]
         y_pending = y_flat.reshape(n_pending, K, D)
         n_evaluations += t_flat.numel()
+        if accepted_integral is None:
+            accepted_integral = y_flat.new_zeros(D)
 
+        # Per-interval contributions (Kronrod = primary) and embedded-rule
+        # difference (= primary - Gauss). The Jacobian h/2 maps [-1, 1] -> [t_l, t_r].
         contrib_pending = h_half.unsqueeze(-1) * torch.einsum(
             "k,ikd->id", weights, y_pending
         )
@@ -195,14 +204,13 @@ def adaptive_quadrature(
             "k,ikd->id", weights_error, y_pending
         )
 
-        if accepted_integral is None:
-            running_total = contrib_pending.sum(dim=0)
-        else:
-            running_total = accepted_integral + contrib_pending.sum(dim=0)
-
-        # Per-(interval, dim) error / tolerance, then RMS over dimensions.
+        # Accept / reject by per-interval error vs the *running* total: the
+        # rtol scale uses our best estimate of the integral so far so early
+        # intervals don't get judged against a near-zero magnitude.
+        running_total = accepted_integral + contrib_pending.sum(dim=0)
         ratio_denom = atol + rtol * running_total.abs()  # [D]
         ratio_per_d = err_pending.abs() / ratio_denom
+        # RMS over D so a single noisy output dim doesn't dominate splitting.
         ratio = torch.sqrt((ratio_per_d**2).mean(dim=-1))  # [n_pending]
 
         if n_iter >= max_iter:
@@ -227,23 +235,18 @@ def adaptive_quadrature(
             accepted_err.append(err_pending[accept_mask])
             accepted_y.append(y_pending[accept_mask])
             accepted_t_eval.append(t_eval_pending[accept_mask])
-            new_total = contrib_pending[accept_mask].sum(dim=0)
-            accepted_integral = (
-                new_total
-                if accepted_integral is None
-                else accepted_integral + new_total
+            accepted_integral = accepted_integral + contrib_pending[accept_mask].sum(
+                dim=0
             )
 
+        # Rejected intervals are split at their midpoint; the two halves go
+        # into the next iteration. Accepted intervals are dropped from pending.
         reject_mask = ~accept_mask
-        if reject_mask.any():
-            rej_left = pending_left[reject_mask]
-            rej_right = pending_right[reject_mask]
-            rej_mid = (rej_left + rej_right) / 2
-            pending_left = torch.cat([rej_left, rej_mid])
-            pending_right = torch.cat([rej_mid, rej_right])
-        else:
-            pending_left = pending_left[:0]
-            pending_right = pending_right[:0]
+        rej_left = pending_left[reject_mask]
+        rej_right = pending_right[reject_mask]
+        rej_mid = (rej_left + rej_right) / 2
+        pending_left = torch.cat([rej_left, rej_mid])
+        pending_right = torch.cat([rej_mid, rej_right])
 
     if not accepted_contrib:
         # All initial intervals were forced-rejected with no acceptance path —
