@@ -23,5 +23,6 @@ multiple `f` calls to bound peak GPU memory.
   cut, and how to rewrite calls.
 
 A self-contained tour of the public API is in
-[`examples/quickstart.py`](../examples/quickstart.py); the README has the
+[`examples/quickstart.py`](https://github.com/ericyuan00000/torchpathint/blob/main/examples/quickstart.py);
+the [README](https://github.com/ericyuan00000/torchpathint#readme) has the
 30-second pitch.
