@@ -7,8 +7,6 @@ from torchpathint import (
     path_integral,
     adaptive_quadrature,
     fixed_quadrature,
-    evaluate_chunked,
-    estimate_max_batch,
     IntegralOutput,
     Method,
     get_method,
@@ -57,7 +55,7 @@ it.
 out = path_integral(f, t_init, t_final, *,
                     method="gk21",
                     atol=1e-5, rtol=1e-5,
-                    max_batch=None, memory_fraction=None,
+                    max_batch=None,
                     max_iter=50,
                     device=None, dtype=torch.float64)
 ```
@@ -86,31 +84,6 @@ no error estimate.
 - Returns `integral_error=None` and `error_ratios=None`.
 - `gl<n>` for any positive integer `n` is supported. Larger `n` is more
   accurate on smooth integrands but allocates more memory per call.
-
-## `evaluate_chunked`
-
-```python
-y = evaluate_chunked(f, t, max_batch)
-```
-
-Helper used by both engines. Splits a 1-d `t` tensor into chunks of at
-most `max_batch` and concatenates results. `max_batch=None` (or
-`max_batch >= t.numel()`) calls `f` once with the whole tensor.
-
-You probably don't need to call this directly — the engines apply it
-themselves — but it is exported for cases where you want to reuse the
-same chunking logic outside the integrators.
-
-## `estimate_max_batch`
-
-```python
-max_batch = estimate_max_batch(f, t_sample, device, memory_fraction)
-```
-
-The probe behind `memory_fraction`. Returns `None` on CPU (no chunking),
-a positive `int` on CUDA when a per-evaluation cost was measured, or
-`None` on CUDA when nothing measurable was allocated. See
-[memory.md](memory.md) for details.
 
 ## `IntegralOutput`
 

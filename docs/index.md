@@ -17,8 +17,9 @@ multiple `f` calls to bound peak GPU memory.
   estimate measures, why the integrator splits at the midpoint, and how the
   per-evaluation chunking interacts with subinterval boundaries.
 - [API reference](api.md) — public functions, classes, and their contracts.
-- [Memory probe](memory.md) — how `memory_fraction` is measured and applied,
-  and when to override it.
+- [GPU memory and chunking](memory.md) — how the integrator adapts chunk
+  size to available GPU memory by shrinking on CUDA OOM, and when to
+  set `max_batch` manually.
 - [Migrating from torchpathdiffeq](migration.md) — what changed, what was
   cut, and how to rewrite calls.
 

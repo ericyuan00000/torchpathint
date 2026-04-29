@@ -1,94 +1,92 @@
-# Memory probe
+# GPU memory and chunking
 
-`max_batch` and `memory_fraction` are alternative ways to control peak GPU
-memory inside the integrator. This page explains what each one does and
-when to pick which.
+`adaptive_quadrature` and `fixed_quadrature` evaluate the integrand on a
+single flat `Tensor[N]` of points each iteration. Whatever `f` allocates
+internally — forward graphs, attention intermediates, vmap'd backward
+state — has to fit on the device for that call to succeed. This page
+explains how the integrator keeps that under control without making you
+hand-tune anything in the common case.
 
 ## What gets allocated
 
-Each iteration of `adaptive_quadrature` evaluates `K = 2n + 1` quadrature
-nodes per pending subinterval. With `n_pending` subintervals it builds a
-flat `Tensor[n_pending · K]` of evaluation points and calls `f` on it,
-producing `Tensor[n_pending · K, D]`. The integrator's own bookkeeping is
-small (a handful of `Tensor[n_pending, D]` running sums and per-iteration
-mesh tensors); the dominant cost is whatever `f` allocates internally
-plus the output tensor.
+Each iteration of `adaptive_quadrature` builds a flat `Tensor[n_pending · K]`
+where `K = 2n + 1` is the rule's node count and `n_pending` is the number
+of still-unconverged subintervals. `n_pending` starts at 1 and at most
+doubles per iteration (each rejected interval splits in two), so the
+input batch grows gradually rather than in one shot. The integrator's own
+bookkeeping (running sums, mesh tensors) is small; the dominant cost is
+whatever `f` allocates plus the `[n_pending · K, D]` output.
 
 `fixed_quadrature` is a single iteration with `K` evaluations.
 
-## `max_batch`
+## The default: shrink on CUDA OOM
 
-Sets a hard cap on how many points are sent to `f` per call. The flat
-evaluation tensor is sliced into chunks of at most `max_batch` points,
-each chunk is passed to `f`, and outputs are concatenated. Chunks span
-subinterval boundaries — even a single high-order subinterval can be
-spread across multiple `f` calls.
+When `f(t)` raises a CUDA out-of-memory error, the integrator catches it,
+drops partial state, calls `torch.cuda.empty_cache`, halves its current
+chunk size, and retries the same call. The learned size persists across
+adaptive iterations: a halving forced at iteration 5 means iterations
+6, 7, … chunk at the smaller size from the start without re-discovering
+the failing one.
 
-Use `max_batch` when you already know the answer (e.g. you've seen
-`f` OOM at some size before).
+This is the default — you don't have to ask for it. With no flags set,
+the first `f(t)` call uses the full input, hits whatever ceiling your
+integrand has on this GPU, and the integrator routes around it.
 
-## `memory_fraction`
+The OOM matcher accepts both the modern `torch.cuda.OutOfMemoryError`
+and the older `RuntimeError("CUDA out of memory ...")` form some kernels
+still raise. Other `RuntimeError`s (shape mismatches, etc.) propagate
+unchanged.
 
-Asks the integrator to *measure* the right `max_batch` instead of you
-guessing. The probe runs once per integrator call (before adaptive
-iteration starts) and is implemented in
-`torchpathint.memory.estimate_max_batch`:
+If even `max_batch=1` OOMs, the chunker re-raises rather than spinning.
+At that point the integrand needs less memory or a bigger GPU.
 
-1. `memory_fraction ∈ (0, 1]` is interpreted as a fraction of *currently
-   free* GPU memory, computed as
-   `free + (reserved − allocated)` so the PyTorch allocator's cached blocks
-   count as available. On a dedicated GPU this is roughly
-   `memory_fraction · total_memory`; on a shared GPU it scales with what is
-   actually free right now.
-2. `f` is invoked at four growing input sizes — 8, 64, 512, 4096 — with
-   `torch.cuda.reset_peak_memory_stats` between calls. Doubling keeps the
-   probe cheap (`O(log N)` measurements) while averaging out small-`N`
-   startup noise.
-3. The largest measured peak-bytes-per-evaluation is multiplied by a 2.0×
-   safety factor (the integrator's own tensors aren't part of the probe)
-   and divided into the budget to pick a positive `max_batch`.
-4. If a probe run OOMs we stop early and use the largest size that fit.
-5. If every probe size measured zero peak allocation (typical for trivial
-   integrands like `sin(t)`), the probe returns `None`, falling through to
-   "no chunking".
+### Why not predict instead?
 
-## Interaction
+An earlier version of torchpathint ran a one-time probe of `f` at growing
+input sizes and extrapolated peak memory linearly to pick a safe
+`max_batch`. That works for forward-only integrands but breaks for
+nested-autograd integrands like fairchem MLIPs (forces are computed via
+`torch.autograd.grad` inside the forward, and an outer
+`is_grads_batched=True` over that scales memory super-linearly in the
+batch dimension). Probing under-predicts; the actual call OOMs.
 
-- If both `max_batch` and `memory_fraction` are set, `max_batch` wins —
-  the probe is skipped.
-- On CPU, `memory_fraction` is ignored. CPU memory accounting through the
-  PyTorch allocator is unreliable and CPU OOMs are less catastrophic than
-  GPU OOMs.
-- The probe consumes one probe-sized allocation per probe size before the
-  real integration starts; this is intentional and amortizes well over a
-  long-running integration.
-- The probe is a *one-time* calibration. If `f`'s allocation pattern
-  drifts over the course of a long training loop, re-create the integrator
-  call (or pass a tighter `max_batch`).
+The adaptive loop already provides a natural ramp: iteration 1 has
+`n_pending = 1`, so the first `f()` call is just `K` nodes — small enough
+to fit anywhere. Subsequent iterations grow into the GPU budget. Letting
+the allocator be the oracle removes the prediction problem entirely.
 
-## When to override
+## `max_batch` — optional initial cap
 
-The probe is conservative on purpose. Override it with `max_batch` when:
+If you already know `f` OOMs above some size — for example, you've seen
+the failure on this exact GPU before and want to skip the warm-up
+halving — pass `max_batch` to start chunked from the beginning. OOM-shrink
+still applies on top: a too-generous `max_batch` halves automatically.
 
-- Your integrand is allocation-stable but the probe under-estimates because
-  small `N` measurements are dominated by allocator overhead. Pass a
-  `max_batch` that is large enough that `f` is GPU-bound but small enough
-  that the output tensor still fits.
-- You are running on a shared GPU and want a hard cap that doesn't depend
-  on the current free memory at probe time.
-- You want bit-identical reproducibility: `max_batch` is deterministic;
-  the probe uses live free-memory readings, which fluctuate.
+```python
+out = path_integral(f, 0.0, 1.0, method="gk21", max_batch=8)
+```
+
+`max_batch=None` (default) means "start unchunked."
+
+## `memory_fraction` is deprecated
+
+`memory_fraction` previously triggered the probe-based estimator. It now
+emits a `DeprecationWarning` and is otherwise ignored — chunk sizing is
+OOM-driven and doesn't need an upfront budget. Drop the kwarg from your
+call sites; pass `max_batch` if you want a manual cap.
 
 ## Diagnostics
 
-`adaptive_quadrature` and `fixed_quadrature` log at `DEBUG` level when the
-probe runs. Enable it with
+The chunker logs a warning each time it shrinks:
+
+```
+evaluate_chunked: caught CUDA OOM at max_batch=None, retrying at 16.
+```
+
+Enable per-iteration debug logging with:
 
 ```python
 import logging
 logging.getLogger("torchpathint").setLevel(logging.DEBUG)
 logging.basicConfig()
 ```
-
-The log line reports per-evaluation bytes, which probe size produced the
-maximum, the safety factor, and the resulting `max_batch`.
