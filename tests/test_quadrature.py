@@ -10,9 +10,9 @@ import torch
 from torchpathint import (
     METHOD_NAMES_ADAPTIVE,
     adaptive_quadrature,
-    evaluate_chunked,
     fixed_quadrature,
 )
+from torchpathint.quadrature import evaluate_chunked
 
 
 def sin_integrand(t: torch.Tensor) -> torch.Tensor:
@@ -36,23 +36,29 @@ def gaussian_peak(t: torch.Tensor) -> torch.Tensor:
 
 
 def test_evaluate_chunked_no_chunking_matches_direct(cpu_device):
+    from torchpathint.quadrature import _BatchState
+
     t = torch.linspace(0.0, 1.0, 50, dtype=torch.float64)
-    out = evaluate_chunked(sin_integrand, t, max_batch=None)
+    out = evaluate_chunked(sin_integrand, t, _BatchState(None))
     assert torch.allclose(out, sin_integrand(t))
 
 
 def test_evaluate_chunked_small_batch_matches_direct(cpu_device):
+    from torchpathint.quadrature import _BatchState
+
     t = torch.linspace(0.0, 1.0, 50, dtype=torch.float64)
     direct = sin_integrand(t)
     for batch in [1, 3, 7, 49, 50, 100]:
-        out = evaluate_chunked(sin_integrand, t, max_batch=batch)
+        out = evaluate_chunked(sin_integrand, t, _BatchState(batch))
         assert out.shape == direct.shape
         assert torch.allclose(out, direct)
 
 
 def test_evaluate_chunked_empty_raises(cpu_device):
+    from torchpathint.quadrature import _BatchState
+
     with pytest.raises(ValueError, match="empty tensor"):
-        evaluate_chunked(sin_integrand, torch.zeros(0), max_batch=None)
+        evaluate_chunked(sin_integrand, torch.zeros(0), _BatchState(None))
 
 
 # --- adaptive_quadrature: accuracy on smooth integrand -----------------------
@@ -322,14 +328,18 @@ def test_fixed_n_evaluations_equals_K(cpu_device):
 
 def test_evaluate_chunked_preserves_D(cpu_device):
     """A vector integrand keeps its trailing D under chunking."""
+    from torchpathint.quadrature import _BatchState
+
     t = torch.linspace(0.0, 1.0, 13, dtype=torch.float64)
-    out = evaluate_chunked(vector_integrand, t, max_batch=4)
+    out = evaluate_chunked(vector_integrand, t, _BatchState(4))
     assert out.shape == (13, 3)
     assert torch.allclose(out, vector_integrand(t))
 
 
 def test_evaluate_chunked_single_call_when_max_batch_is_large(cpu_device):
     """If max_batch >= n, the helper should call f exactly once."""
+    from torchpathint.quadrature import _BatchState
+
     calls = 0
 
     def counting(t):
@@ -338,7 +348,7 @@ def test_evaluate_chunked_single_call_when_max_batch_is_large(cpu_device):
         return sin_integrand(t)
 
     t = torch.linspace(0.0, 1.0, 50, dtype=torch.float64)
-    evaluate_chunked(counting, t, max_batch=100)
+    evaluate_chunked(counting, t, _BatchState(100))
     assert calls == 1
-    evaluate_chunked(counting, t, max_batch=None)
+    evaluate_chunked(counting, t, _BatchState(None))
     assert calls == 2  # one more, single-batched again

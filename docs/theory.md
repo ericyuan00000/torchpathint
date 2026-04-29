@@ -86,11 +86,10 @@ subinterval no longer has to fit. The per-evaluation chunking is the
 property the old `torchpathdiffeq` couldn't offer — it always evaluated
 every node of an interval together.
 
-When `memory_fraction` is set instead of `max_batch`, the integrator probes
-`f` at four growing input sizes (8, 64, 512, 4096), measures peak per-call
-allocation, and divides the budget (`memory_fraction · free_GPU_memory`)
-by per-evaluation cost to pick a `max_batch`. See [memory.md](memory.md)
-for the gory details.
+When the integrand exceeds available GPU memory at the size the adaptive
+loop is currently calling it with, `evaluate_chunked` catches the CUDA
+OOM, halves its chunk size, and retries; the learned size persists across
+later iterations. See [memory.md](memory.md) for the details.
 
 ## What this library is not
 

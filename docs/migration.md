@@ -87,10 +87,13 @@ each call starts from a single subinterval and adapts from scratch.
 ### Memory control
 
 `remove_cut` (which pruned over-resolved subintervals between iterations)
-is gone. `max_batch` and `memory_fraction` replace what the old library
-called fixed-batch evaluation: the new chunking is per-evaluation, not
-per-interval, so a single high-order interval can be spread across
-multiple `f` calls. See [memory.md](memory.md).
+is gone. `max_batch` lets you cap the per-call evaluation count, and the
+chunker shrinks it automatically on CUDA OOM — so an integrand that's too
+big for the GPU at the current `n_pending · K` size routes around the
+failure without intervention. The old library's all-or-nothing per-interval
+evaluation is replaced by per-evaluation chunking; chunks span interval
+boundaries. `memory_fraction` is accepted as a deprecated no-op kwarg.
+See [memory.md](memory.md).
 
 ### Bounds
 

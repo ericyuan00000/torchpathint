@@ -43,13 +43,13 @@ def path_integral(
             non-adaptive Gauss-Legendre.
         atol: Absolute tolerance (adaptive only; ignored for ``gl*``).
         rtol: Relative tolerance (adaptive only; ignored for ``gl*``).
-        max_batch: Maximum integrand evaluations per ``f`` call. Applies
-            to both adaptive and fixed. Overrides ``memory_fraction`` if
-            both are set.
-        memory_fraction: Fraction of currently-free GPU memory
-            (``(0, 1]``) the integrator may consume. When set with
-            ``max_batch=None``, ``f`` is benchmarked at probe sizes to
-            pick a ``max_batch`` that fits the budget. Ignored on CPU.
+        max_batch: Initial cap on integrand evaluations per ``f`` call.
+            Applies to both adaptive and fixed. ``None`` (default) starts
+            unchunked. CUDA OOM halves this cap automatically and the
+            learned size persists across iterations.
+        memory_fraction: Deprecated. Previously triggered an upfront
+            memory probe; now ignored — chunk sizing is OOM-driven, so
+            no probe is needed.
         max_iter: Maximum refinement iterations (adaptive only).
         device: Device for internal tensors. Defaults to CUDA if available.
         dtype: Floating-point dtype. Defaults to ``torch.float64``.

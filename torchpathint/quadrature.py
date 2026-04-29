@@ -5,9 +5,10 @@ The adaptive engine ``adaptive_quadrature`` is the heart of the library:
 1. Start with one interval ``[t_init, t_final]``.
 2. Evaluate the integrand at the rule's quadrature nodes inside every
    pending interval, *in parallel*. Evaluations are flattened into a single
-   ``[total_points]`` tensor and chunked by ``max_batch`` if the user wants
-   bounded GPU memory — chunks may span interval boundaries, so a single
-   high-order interval no longer has to fit in memory.
+   ``[total_points]`` tensor and chunked through ``evaluate_chunked``,
+   which sizes chunks itself by catching CUDA OOM and halving — chunks
+   may span interval boundaries, so a single high-order interval no
+   longer has to fit in memory.
 3. For each interval, compute the primary (Kronrod) integral estimate and
    the embedded error from the same K evaluations. Compare the per-interval
    error against ``atol + rtol * |total_integral_so_far|``.
@@ -27,13 +28,13 @@ rule on the full domain — useful as a baseline or when smoothness is known.
 from __future__ import annotations
 
 import logging
+import os
 import warnings
 from typing import TYPE_CHECKING
 
 import torch
 
 from .base import IntegralOutput, normalize_bound, resolve_device
-from .memory import estimate_max_batch
 from .methods import get_method
 
 if TYPE_CHECKING:
@@ -42,21 +43,78 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class _BatchState:
+    """Mutable per-integration record of the current safe chunk size.
+
+    The adaptive loop calls ``evaluate_chunked`` once per refinement
+    iteration. Carrying state across calls means a chunk size learned by
+    halving on OOM at iteration 5 doesn't have to be re-discovered at
+    iterations 6, 7, … — those iterations chunk at the learned size from
+    the start.
+
+    ``max_batch is None`` means "no chunking yet (one big call)"; the first
+    OOM transitions it to a finite cap.
+    """
+
+    __slots__ = ("max_batch",)
+
+    def __init__(self, max_batch: int | None) -> None:
+        self.max_batch = max_batch
+
+
+def _is_cuda_oom(exc: BaseException) -> bool:
+    """True for the canonical OOM error and the older ``RuntimeError`` form.
+
+    Modern PyTorch raises ``torch.cuda.OutOfMemoryError`` (a ``RuntimeError``
+    subclass), but a few kernels and back-ends still raise plain
+    ``RuntimeError`` with ``"out of memory"`` in the message. We match both
+    so the shrink-and-retry path doesn't silently turn into a re-raise.
+    """
+    if isinstance(exc, torch.cuda.OutOfMemoryError):
+        return True
+    if isinstance(exc, RuntimeError) and "out of memory" in str(exc).lower():
+        return True
+    return False
+
+
+def _expandable_segments_hint() -> str:
+    """Suggest setting ``expandable_segments:True`` if the user hasn't.
+
+    The caching allocator pools fixed-size segments by default. After an
+    OOM and an ``empty_cache``, those pools survive — a smaller retry
+    can still fail because the freed bytes are split across non-contiguous
+    segments. ``expandable_segments:True`` switches the allocator to
+    growing/shrinking contiguous segments via cuMemMap, which makes
+    OOM-and-retry much more reliable. The hint goes into the recovery
+    log line so the user sees it exactly when it would help.
+    """
+    cfg = os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "")
+    if "expandable_segments:true" in cfg.lower():
+        return ""
+    return (
+        " (consider PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True "
+        "to reduce allocator fragmentation across retries)"
+    )
+
+
 def evaluate_chunked(
     f: Callable[[torch.Tensor], torch.Tensor],
     t: torch.Tensor,
-    max_batch: int | None,
+    state: _BatchState,
 ) -> torch.Tensor:
-    """Evaluate ``f`` on a flat 1-d tensor of points, optionally in chunks.
+    """Evaluate ``f`` on a flat 1-d tensor of points, halving on CUDA OOM.
 
-    Decouples GPU memory from the quadrature rule's order: even a single
-    interval's K nodes can span multiple chunks if K is large enough.
+    Starts at ``state.max_batch`` (``None`` = one big call). On OOM, drops
+    partial results, calls ``empty_cache``, halves ``state.max_batch`` in
+    place, and retries. The mutated state persists, so subsequent calls
+    in the same integration skip the sizes that already failed.
+
+    Non-OOM exceptions are re-raised unchanged.
 
     Args:
         f: Integrand. Takes shape ``[N]``, returns ``[N, D]``.
         t: 1-d tensor of evaluation points.
-        max_batch: Maximum chunk size. If ``None`` or ``>= t.numel()``,
-            evaluates all points in a single call.
+        state: Shared chunk-size record (see :class:`_BatchState`).
 
     Returns:
         Tensor of shape ``[N, D]``.
@@ -64,10 +122,55 @@ def evaluate_chunked(
     n = t.numel()
     if n == 0:
         raise ValueError("evaluate_chunked received an empty tensor.")
-    if max_batch is None or max_batch >= n:
-        return f(t)
-    parts = [f(t[start : start + max_batch]) for start in range(0, n, max_batch)]
-    return torch.cat(parts, dim=0)
+    while True:
+        current = state.max_batch
+        parts: list[torch.Tensor] | None = None
+        try:
+            if current is None or current >= n:
+                return f(t)
+            parts = []
+            for start in range(0, n, current):
+                parts.append(f(t[start : start + current]))
+            return torch.cat(parts, dim=0)
+        except RuntimeError as exc:
+            if not _is_cuda_oom(exc):
+                raise
+            del parts
+            # synchronize before empty_cache so any in-flight frees from the
+            # failed call land before we tell the allocator to release.
+            # Without this, the cache release can race the failed kernel's
+            # cleanup and leave segments pinned, making the smaller retry
+            # OOM again on already-freed memory.
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+            previous = current if current is not None else n
+            new_size = max(1, previous // 2)
+            if new_size >= previous:
+                # Already at 1 — nothing more to shrink. Re-raise so the
+                # caller sees the OOM rather than spinning.
+                raise
+            state.max_batch = new_size
+            logger.warning(
+                "evaluate_chunked: caught CUDA OOM at max_batch=%s, "
+                "retrying at %d.%s",
+                "None" if current is None else str(current),
+                new_size,
+                _expandable_segments_hint(),
+            )
+
+
+def _warn_memory_fraction_deprecated(memory_fraction: float | None) -> None:
+    if memory_fraction is None:
+        return
+    warnings.warn(
+        "memory_fraction is deprecated and now a no-op. The integrator "
+        "starts unchunked and halves chunks on CUDA OOM, which removes "
+        "the need for an upfront memory probe. Pass max_batch instead "
+        "if you want a manual cap.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 def adaptive_quadrature(
@@ -96,16 +199,12 @@ def adaptive_quadrature(
             ``"gk31"``).
         atol: Absolute tolerance for per-interval error.
         rtol: Relative tolerance, scaled by the running integral magnitude.
-        max_batch: Maximum integrand evaluations per ``f`` call. ``None``
-            means no chunking (one big batch) unless ``memory_fraction`` is
-            set, in which case chunking is sized automatically. Chunks span
-            interval boundaries.
-        memory_fraction: Fraction of currently-free GPU memory
-            (``(0, 1]``) the integrator may consume. When set and
-            ``max_batch is None``, ``f`` is benchmarked at a few sizes to
-            estimate per-evaluation cost, and ``max_batch`` is chosen so
-            chunks fit in ``memory_fraction * free_memory``. Ignored on CPU.
-            ``max_batch`` overrides this if both are set.
+        max_batch: Initial cap on integrand evaluations per ``f`` call.
+            ``None`` (default) starts unchunked; chunks span interval
+            boundaries. CUDA OOM halves this cap automatically and the
+            learned size persists across iterations.
+        memory_fraction: Deprecated. Previously triggered an upfront
+            memory probe; now ignored — chunk sizing is OOM-driven.
         max_iter: Maximum refinement iterations. On the last iteration any
             still-over-tolerance intervals are force-accepted with a warning.
         device: Device for internal tensors. Defaults to CUDA if available.
@@ -115,6 +214,7 @@ def adaptive_quadrature(
         :class:`IntegralOutput` with the integral, error estimate, mesh, and
         per-interval diagnostics.
     """
+    _warn_memory_fraction_deprecated(memory_fraction)
     device = resolve_device(device)
     t_init_t = normalize_bound(t_init, device, dtype, "t_init")
     t_final_t = normalize_bound(t_final, device, dtype, "t_final")
@@ -129,8 +229,7 @@ def adaptive_quadrature(
     weights_error = method_obj.weights_error
     K = nodes.numel()
 
-    if max_batch is None and memory_fraction is not None:
-        max_batch = estimate_max_batch(f, t_init_t, device, memory_fraction)
+    state = _BatchState(max_batch)
 
     pending_left = t_init_t.unsqueeze(0)
     pending_right = t_final_t.unsqueeze(0)
@@ -160,9 +259,10 @@ def adaptive_quadrature(
         t_eval_pending = h_half.unsqueeze(-1) * nodes.unsqueeze(0) + t_mid.unsqueeze(-1)
 
         # Single batched call: every pending interval's K nodes are evaluated
-        # together, optionally chunked across f calls when max_batch is set.
+        # together, optionally chunked across f calls when the OOM-shrink
+        # state has learned a finite max_batch.
         t_flat = t_eval_pending.reshape(-1)
-        y_flat = evaluate_chunked(f, t_flat, max_batch)
+        y_flat = evaluate_chunked(f, t_flat, state)
         if y_flat.dim() != 2 or y_flat.shape[0] != t_flat.numel():
             raise ValueError(
                 "Integrand f must return shape [N, D] matching the input length; "
@@ -304,14 +404,10 @@ def fixed_quadrature(
         t_init: Lower integration bound.
         t_final: Upper integration bound.
         method: Non-adaptive rule name ``"gl<n>"`` for any positive ``n``.
-        max_batch: Maximum evaluations per ``f`` call. The rule's K nodes
-            are chunked across multiple ``f`` calls if K exceeds this.
-            ``None`` means no chunking unless ``memory_fraction`` is set.
-        memory_fraction: Fraction of currently-free GPU memory
-            (``(0, 1]``) the integrator may consume. Triggers automatic
-            ``max_batch`` sizing via a probe of ``f``'s per-evaluation
-            cost. Ignored on CPU. ``max_batch`` overrides this if both
-            are set.
+        max_batch: Initial cap on evaluations per ``f`` call. CUDA OOM
+            halves this automatically.
+        memory_fraction: Deprecated. Previously triggered an upfront
+            memory probe; now ignored — chunk sizing is OOM-driven.
         device: Device for internal tensors.
         dtype: Floating-point dtype.
 
@@ -320,6 +416,7 @@ def fixed_quadrature(
         and ``error_ratios`` are ``None`` (no error estimate without an
         embedded rule).
     """
+    _warn_memory_fraction_deprecated(memory_fraction)
     device = resolve_device(device)
     t_init_t = normalize_bound(t_init, device, dtype, "t_init")
     t_final_t = normalize_bound(t_final, device, dtype, "t_final")
@@ -332,14 +429,13 @@ def fixed_quadrature(
     nodes = method_obj.nodes
     weights = method_obj.weights
 
-    if max_batch is None and memory_fraction is not None:
-        max_batch = estimate_max_batch(f, t_init_t, device, memory_fraction)
+    state = _BatchState(max_batch)
 
     h_half = (t_final_t - t_init_t) / 2
     t_mid = (t_final_t + t_init_t) / 2
     t_eval = h_half * nodes + t_mid  # [K]
 
-    y = evaluate_chunked(f, t_eval, max_batch)  # [K, D]
+    y = evaluate_chunked(f, t_eval, state)  # [K, D]
     if y.dim() != 2 or y.shape[0] != t_eval.numel():
         raise ValueError(
             "Integrand f must return shape [N, D] matching the input length; "
