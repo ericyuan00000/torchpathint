@@ -17,7 +17,12 @@ import pytest
 import torch
 
 from torchpathint import adaptive_quadrature, fixed_quadrature
-from torchpathint.quadrature import _BatchState, _is_cuda_oom, evaluate_chunked
+from torchpathint.quadrature import (
+    _BatchState,
+    _expandable_segments_hint,
+    _is_cuda_oom,
+    evaluate_chunked,
+)
 
 
 def _oom_above(threshold: int):
@@ -156,6 +161,40 @@ def test_fixed_quadrature_recovers_when_full_K_OOMs():
     # gl7 isn't exact for sin over [0, π], but it's close enough for sanity.
     assert torch.allclose(out.integral, torch.tensor([2.0], dtype=torch.float64),
                           atol=1e-2)
+
+
+def test_expandable_segments_hint_when_unset(monkeypatch):
+    monkeypatch.delenv("PYTORCH_CUDA_ALLOC_CONF", raising=False)
+    hint = _expandable_segments_hint()
+    assert hint
+    assert "expandable_segments:True" in hint
+
+
+def test_expandable_segments_hint_silent_when_set(monkeypatch):
+    monkeypatch.setenv(
+        "PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True,foo:bar",
+    )
+    assert _expandable_segments_hint() == ""
+
+
+def test_oom_warning_includes_hint_when_unset(monkeypatch, caplog):
+    monkeypatch.delenv("PYTORCH_CUDA_ALLOC_CONF", raising=False)
+    f, _calls = _oom_above(threshold=2)
+    state = _BatchState(None)
+    t = torch.linspace(0.0, 1.0, 8, dtype=torch.float64)
+    with caplog.at_level("WARNING", logger="torchpathint.quadrature"):
+        evaluate_chunked(f, t, state)
+    assert any("expandable_segments" in r.getMessage() for r in caplog.records)
+
+
+def test_oom_warning_omits_hint_when_set(monkeypatch, caplog):
+    monkeypatch.setenv("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    f, _calls = _oom_above(threshold=2)
+    state = _BatchState(None)
+    t = torch.linspace(0.0, 1.0, 8, dtype=torch.float64)
+    with caplog.at_level("WARNING", logger="torchpathint.quadrature"):
+        evaluate_chunked(f, t, state)
+    assert not any("expandable_segments" in r.getMessage() for r in caplog.records)
 
 
 def test_memory_fraction_emits_deprecation_warning():

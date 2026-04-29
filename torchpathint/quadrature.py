@@ -28,6 +28,7 @@ rule on the full domain — useful as a baseline or when smoothness is known.
 from __future__ import annotations
 
 import logging
+import os
 import warnings
 from typing import TYPE_CHECKING
 
@@ -76,6 +77,26 @@ def _is_cuda_oom(exc: BaseException) -> bool:
     return False
 
 
+def _expandable_segments_hint() -> str:
+    """Suggest setting ``expandable_segments:True`` if the user hasn't.
+
+    The caching allocator pools fixed-size segments by default. After an
+    OOM and an ``empty_cache``, those pools survive — a smaller retry
+    can still fail because the freed bytes are split across non-contiguous
+    segments. ``expandable_segments:True`` switches the allocator to
+    growing/shrinking contiguous segments via cuMemMap, which makes
+    OOM-and-retry much more reliable. The hint goes into the recovery
+    log line so the user sees it exactly when it would help.
+    """
+    cfg = os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "")
+    if "expandable_segments:true" in cfg.lower():
+        return ""
+    return (
+        " (consider PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True "
+        "to reduce allocator fragmentation across retries)"
+    )
+
+
 def evaluate_chunked(
     f: Callable[[torch.Tensor], torch.Tensor],
     t: torch.Tensor,
@@ -115,6 +136,13 @@ def evaluate_chunked(
             if not _is_cuda_oom(exc):
                 raise
             del parts
+            # synchronize before empty_cache so any in-flight frees from the
+            # failed call land before we tell the allocator to release.
+            # Without this, the cache release can race the failed kernel's
+            # cleanup and leave segments pinned, making the smaller retry
+            # OOM again on already-freed memory.
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             torch.cuda.empty_cache()
             previous = current if current is not None else n
             new_size = max(1, previous // 2)
@@ -125,9 +153,10 @@ def evaluate_chunked(
             state.max_batch = new_size
             logger.warning(
                 "evaluate_chunked: caught CUDA OOM at max_batch=%s, "
-                "retrying at %d.",
+                "retrying at %d.%s",
                 "None" if current is None else str(current),
                 new_size,
+                _expandable_segments_hint(),
             )
 
 
