@@ -10,9 +10,9 @@ import torch
 from torchpathint import (
     METHOD_NAMES_ADAPTIVE,
     adaptive_quadrature,
-    evaluate_chunked,
     fixed_quadrature,
 )
+from torchpathint.quadrature import evaluate_chunked
 
 
 def sin_integrand(t: torch.Tensor) -> torch.Tensor:

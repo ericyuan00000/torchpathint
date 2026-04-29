@@ -16,8 +16,8 @@ import warnings
 import pytest
 import torch
 
-from torchpathint import adaptive_quadrature, evaluate_chunked, fixed_quadrature
-from torchpathint.quadrature import _BatchState, _is_cuda_oom
+from torchpathint import adaptive_quadrature, fixed_quadrature
+from torchpathint.quadrature import _BatchState, _is_cuda_oom, evaluate_chunked
 
 
 def _oom_above(threshold: int):
