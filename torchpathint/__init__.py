@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from .base import IntegralOutput, normalize_bound, resolve_device
-from .memory import estimate_max_batch
 from .methods import METHOD_NAMES_ADAPTIVE, Method, get_method
 from .path_integral import path_integral
 from .quadrature import adaptive_quadrature, evaluate_chunked, fixed_quadrature
@@ -16,7 +15,6 @@ __all__ = [
     "Method",
     "__version__",
     "adaptive_quadrature",
-    "estimate_max_batch",
     "evaluate_chunked",
     "fixed_quadrature",
     "get_method",
