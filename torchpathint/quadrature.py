@@ -315,8 +315,7 @@ def adaptive_quadrature(
                 warnings.warn(
                     f"Adaptive quadrature: max_iter={max_iter} reached with "
                     f"{n_over}/{n_pending} intervals over tolerance. Returning "
-                    "partial estimate; tighten max_iter, atol/rtol, or pass an "
-                    "initial mesh `t` to refine further.",
+                    "partial estimate; increase max_iter or loosen atol/rtol.",
                     stacklevel=2,
                 )
             accept_mask = torch.ones_like(ratio, dtype=torch.bool)
