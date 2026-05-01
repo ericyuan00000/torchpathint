@@ -27,6 +27,7 @@ def path_integral(
     max_iter: int = 50,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
+    full_output: bool = False,
 ) -> IntegralOutput:
     """Definite integral ``∫_{t_init}^{t_final} f(t) dt`` via quadrature.
 
@@ -53,10 +54,20 @@ def path_integral(
         max_iter: Maximum refinement iterations (adaptive only).
         device: Device for internal tensors. Defaults to CUDA if available.
         dtype: Floating-point dtype. Defaults to ``torch.float64``.
+        full_output: If ``True``, populate the per-interval diagnostic
+            fields on the returned :class:`IntegralOutput`. Default
+            ``False`` returns only ``integral`` plus cheap metadata
+            (``method``, bounds, ``n_iterations``, ``n_evaluations``); the
+            diagnostic fields (``t``, ``y``, ``h``, ``interval_integrals``,
+            ``interval_errors``, ``integral_error``, ``error_ratios``) are
+            ``None``. The default mode also avoids retaining per-interval
+            evaluations across adaptive iterations.
 
     Returns:
-        :class:`IntegralOutput`. For ``gl*`` methods, the error fields are
-        ``None``.
+        :class:`IntegralOutput`. With ``full_output=True``: full diagnostics
+        (error fields are still ``None`` for ``gl*`` methods). With
+        ``full_output=False`` (default): only ``integral`` and cheap
+        metadata; all per-interval diagnostic fields are ``None``.
 
     Raises:
         ValueError: If ``method`` is neither a known ``gk*`` nor a ``gl<n>``
@@ -76,6 +87,7 @@ def path_integral(
             max_iter=max_iter,
             device=device,
             dtype=dtype,
+            full_output=full_output,
         )
     if name.startswith("gl"):
         return fixed_quadrature(
@@ -87,6 +99,7 @@ def path_integral(
             memory_fraction=memory_fraction,
             device=device,
             dtype=dtype,
+            full_output=full_output,
         )
     raise ValueError(
         f"Unknown method {method!r}. Use 'gk15' / 'gk21' / 'gk31' for adaptive "

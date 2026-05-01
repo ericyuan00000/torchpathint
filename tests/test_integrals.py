@@ -266,6 +266,7 @@ def test_interval_integrals_equals_integral(cpu_device):
         atol=1e-9,
         rtol=1e-9,
         device=cpu_device,
+        full_output=True,
     )
     diff = (out.interval_integrals.sum(dim=0) - out.integral).abs().max()
     assert diff < 1e-12
@@ -281,6 +282,7 @@ def test_h_sums_to_domain_width(cpu_device):
         atol=1e-9,
         rtol=1e-9,
         device=cpu_device,
+        full_output=True,
     )
     assert torch.all(out.h > 0)
     assert abs(out.h.sum().item() - 1.0) < 1e-12
@@ -296,6 +298,7 @@ def test_y_matches_reevaluation(cpu_device):
         atol=1e-9,
         rtol=1e-9,
         device=cpu_device,
+        full_output=True,
     )
     y_fresh = _sin_squared(out.t.reshape(-1)).reshape(out.y.shape)
     assert torch.allclose(out.y, y_fresh, atol=1e-15)
@@ -311,6 +314,7 @@ def test_n_evaluations_counts_correctly(cpu_device):
         atol=1e-9,
         rtol=1e-9,
         device=cpu_device,
+        full_output=True,
     )
     # Final accepted intervals * K is a lower bound; total includes rejected
     # intervals re-evaluated as splits.
@@ -329,6 +333,7 @@ def test_error_ratios_under_tolerance_after_convergence(cpu_device):
         atol=1e-9,
         rtol=1e-9,
         device=cpu_device,
+        full_output=True,
     )
     assert torch.all(out.error_ratios < 1.0)
 
@@ -349,6 +354,7 @@ def test_dtype_propagates_to_output(dt, cpu_device):
         rtol=1e-4 if dt == torch.float32 else 1e-10,
         device=cpu_device,
         dtype=dt,
+        full_output=True,
     )
     assert out.integral.dtype == dt
     assert out.t_init.dtype == dt

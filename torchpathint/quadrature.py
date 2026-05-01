@@ -186,6 +186,7 @@ def adaptive_quadrature(
     max_iter: int = 50,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
+    full_output: bool = False,
 ) -> IntegralOutput:
     """Adaptive Gauss-Kronrod quadrature on ``[t_init, t_final]``.
 
@@ -209,10 +210,19 @@ def adaptive_quadrature(
             still-over-tolerance intervals are force-accepted with a warning.
         device: Device for internal tensors. Defaults to CUDA if available.
         dtype: Floating-point dtype. Defaults to ``torch.float64``.
+        full_output: If ``True``, populate the per-interval diagnostic
+            fields (``t``, ``y``, ``h``, ``interval_integrals``,
+            ``interval_errors``, ``integral_error``, ``error_ratios``) on
+            the returned :class:`IntegralOutput`. Default ``False`` returns
+            only ``integral`` plus the cheap counters; the diagnostic fields
+            are ``None``. Default mode also avoids retaining per-interval
+            evaluations across iterations.
 
     Returns:
-        :class:`IntegralOutput` with the integral, error estimate, mesh, and
-        per-interval diagnostics.
+        :class:`IntegralOutput`. With ``full_output=True``: integral, error
+        estimate, mesh, and per-interval diagnostics. With
+        ``full_output=False`` (default): only ``integral`` and the cheap
+        metadata; all per-interval diagnostic fields are ``None``.
     """
     _warn_memory_fraction_deprecated(memory_fraction)
     device = resolve_device(device)
@@ -234,16 +244,21 @@ def adaptive_quadrature(
     pending_left = t_init_t.unsqueeze(0)
     pending_right = t_final_t.unsqueeze(0)
 
-    accepted_t_left: list[torch.Tensor] = []
-    accepted_t_right: list[torch.Tensor] = []
-    accepted_contrib: list[torch.Tensor] = []
-    accepted_err: list[torch.Tensor] = []
-    accepted_y: list[torch.Tensor] = []
-    accepted_t_eval: list[torch.Tensor] = []
+    # Per-interval diagnostic tensors are accumulated only when the caller
+    # asked for full_output; in default mode we just maintain the running
+    # integral and skip the bookkeeping entirely.
+    if full_output:
+        accepted_t_left: list[torch.Tensor] = []
+        accepted_t_right: list[torch.Tensor] = []
+        accepted_contrib: list[torch.Tensor] = []
+        accepted_err: list[torch.Tensor] = []
+        accepted_y: list[torch.Tensor] = []
+        accepted_t_eval: list[torch.Tensor] = []
 
     # Running sum over accepted intervals, shape [D]. Lazily allocated on the
     # first iteration once we learn D from f's output.
     accepted_integral: torch.Tensor | None = None
+    any_accepted = False
     n_evaluations = 0
     n_iter = 0
     forced_partial = False
@@ -309,15 +324,16 @@ def adaptive_quadrature(
             accept_mask = ratio < 1.0
 
         if accept_mask.any():
-            accepted_t_left.append(pending_left[accept_mask])
-            accepted_t_right.append(pending_right[accept_mask])
-            accepted_contrib.append(contrib_pending[accept_mask])
-            accepted_err.append(err_pending[accept_mask])
-            accepted_y.append(y_pending[accept_mask])
-            accepted_t_eval.append(t_eval_pending[accept_mask])
-            accepted_integral = accepted_integral + contrib_pending[accept_mask].sum(
-                dim=0
-            )
+            any_accepted = True
+            accepted_contrib_iter = contrib_pending[accept_mask]
+            accepted_integral = accepted_integral + accepted_contrib_iter.sum(dim=0)
+            if full_output:
+                accepted_t_left.append(pending_left[accept_mask])
+                accepted_t_right.append(pending_right[accept_mask])
+                accepted_contrib.append(accepted_contrib_iter)
+                accepted_err.append(err_pending[accept_mask])
+                accepted_y.append(y_pending[accept_mask])
+                accepted_t_eval.append(t_eval_pending[accept_mask])
 
         # Rejected intervals are split at their midpoint; the two halves go
         # into the next iteration. Accepted intervals are dropped from pending.
@@ -328,10 +344,26 @@ def adaptive_quadrature(
         pending_left = torch.cat([rej_left, rej_mid])
         pending_right = torch.cat([rej_mid, rej_right])
 
-    if not accepted_contrib:
+    if not any_accepted:
         # All initial intervals were forced-rejected with no acceptance path —
         # only possible if pending was empty from the start, but defensive.
         raise RuntimeError("No intervals were accepted by adaptive_quadrature.")
+
+    if not full_output:
+        logger.debug(
+            "adaptive_quadrature: %d iterations, %d evaluations%s",
+            n_iter,
+            n_evaluations,
+            " (partial)" if forced_partial else "",
+        )
+        return IntegralOutput(
+            integral=accepted_integral,
+            method=method_obj.name,
+            t_init=t_init_t,
+            t_final=t_final_t,
+            n_iterations=n_iter,
+            n_evaluations=n_evaluations,
+        )
 
     all_t_left = torch.cat(accepted_t_left)
     all_t_right = torch.cat(accepted_t_right)
@@ -391,6 +423,7 @@ def fixed_quadrature(
     memory_fraction: float | None = None,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
+    full_output: bool = False,
 ) -> IntegralOutput:
     """Non-adaptive Gauss-Legendre quadrature on ``[t_init, t_final]``.
 
@@ -410,11 +443,17 @@ def fixed_quadrature(
             memory probe; now ignored — chunk sizing is OOM-driven.
         device: Device for internal tensors.
         dtype: Floating-point dtype.
+        full_output: If ``True``, populate the diagnostic fields (``t``,
+            ``y``, ``h``, ``interval_integrals``) on the returned
+            :class:`IntegralOutput`. Default ``False`` returns only
+            ``integral`` and the cheap metadata; diagnostic fields are
+            ``None``.
 
     Returns:
         :class:`IntegralOutput`. ``integral_error``, ``interval_errors``,
-        and ``error_ratios`` are ``None`` (no error estimate without an
-        embedded rule).
+        and ``error_ratios`` are always ``None`` (no error estimate without
+        an embedded rule). The remaining diagnostic fields are populated
+        only when ``full_output=True``.
     """
     _warn_memory_fraction_deprecated(memory_fraction)
     device = resolve_device(device)
@@ -442,8 +481,18 @@ def fixed_quadrature(
             f"got input shape [{t_eval.numel()}] and output shape {tuple(y.shape)}."
         )
     integral = h_half * (weights.unsqueeze(-1) * y).sum(dim=0)  # [D]
-    h_full = t_final_t - t_init_t
 
+    if not full_output:
+        return IntegralOutput(
+            integral=integral,
+            method=method_obj.name,
+            t_init=t_init_t,
+            t_final=t_final_t,
+            n_iterations=0,
+            n_evaluations=t_eval.numel(),
+        )
+
+    h_full = t_final_t - t_init_t
     return IntegralOutput(
         integral=integral,
         method=method_obj.name,

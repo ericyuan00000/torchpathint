@@ -11,6 +11,13 @@ import torch
 class IntegralOutput:
     """Result of a definite-integral computation.
 
+    The integrators always populate the cheap fields (``integral``, ``method``,
+    ``t_init``, ``t_final``, ``n_iterations``, ``n_evaluations``). The
+    per-interval diagnostic fields (``t``, ``y``, ``h``, ``interval_integrals``,
+    ``interval_errors``, ``integral_error``, ``error_ratios``) are populated
+    only when the integrator is called with ``full_output=True``; otherwise
+    they are ``None``.
+
     Attributes:
         integral: Computed integral value. Shape: [D].
         method: Name of the quadrature rule used (e.g. 'gk21', 'gl15').
@@ -18,13 +25,20 @@ class IntegralOutput:
         t_final: Upper integration bound, as a 0-d tensor.
         t: Quadrature points actually evaluated, grouped by interval.
             Shape: [N, K] where N = number of (sub)intervals, K = nodes per rule.
+            None unless ``full_output=True``.
         y: Integrand values at t. Shape: [N, K, D].
+            None unless ``full_output=True``.
         h: Width of each (sub)interval, t_right - t_left. Shape: [N].
+            None unless ``full_output=True``.
         interval_integrals: Per-interval integral contributions. Shape: [N, D].
+            None unless ``full_output=True``.
         interval_errors: Per-interval error estimates from the embedded rule.
-            Shape: [N, D]. None for non-adaptive methods.
-        integral_error: Estimated total error. Shape: [D]. None for non-adaptive.
-        error_ratios: Per-interval error / tolerance. Shape: [N]. None for non-adaptive.
+            Shape: [N, D]. None for non-adaptive methods or when
+            ``full_output=False``.
+        integral_error: Estimated total error. Shape: [D]. None for
+            non-adaptive methods or when ``full_output=False``.
+        error_ratios: Per-interval error / tolerance. Shape: [N]. None for
+            non-adaptive methods or when ``full_output=False``.
         n_iterations: Adaptive refinement iterations performed (0 for non-adaptive).
         n_evaluations: Total number of integrand evaluations.
     """
@@ -33,10 +47,10 @@ class IntegralOutput:
     method: str
     t_init: torch.Tensor
     t_final: torch.Tensor
-    t: torch.Tensor
-    y: torch.Tensor
-    h: torch.Tensor
-    interval_integrals: torch.Tensor
+    t: torch.Tensor | None = None
+    y: torch.Tensor | None = None
+    h: torch.Tensor | None = None
+    interval_integrals: torch.Tensor | None = None
     interval_errors: torch.Tensor | None = None
     integral_error: torch.Tensor | None = None
     error_ratios: torch.Tensor | None = None
