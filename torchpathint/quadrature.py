@@ -136,11 +136,6 @@ def evaluate_chunked(
             if not _is_cuda_oom(exc):
                 raise
             del parts
-            # synchronize before empty_cache so any in-flight frees from the
-            # failed call land before we tell the allocator to release.
-            # Without this, the cache release can race the failed kernel's
-            # cleanup and leave segments pinned, making the smaller retry
-            # OOM again on already-freed memory.
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
             torch.cuda.empty_cache()
