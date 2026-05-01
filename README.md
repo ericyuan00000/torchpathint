@@ -47,8 +47,8 @@ Full docs at <https://ericyuan00000.github.io/torchpathint/>:
 
 - **Theory** — how the integrator works, in plain language.
 - **API reference** — every function, argument, and return value.
-- **Memory probe** — bounding peak GPU memory automatically.
-- **Migration guide** — porting code from `torchpathdiffeq`.
+- **GPU memory and chunking** — bounding peak GPU memory automatically.
+- **Migration guide** — porting code from [`torchpathdiffeq`](https://github.com/khegazy/torchpathdiffeq).
 
 ## Development
 
