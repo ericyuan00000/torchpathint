@@ -75,6 +75,7 @@ def test_adaptive_sin_pi_smooth_one_iteration(method, cpu_device):
         atol=1e-10,
         rtol=1e-10,
         device=cpu_device,
+        full_output=True,
     )
     assert abs(out.integral.item() - 2.0) < 1e-10
     assert out.n_iterations == 1
@@ -107,6 +108,7 @@ def test_adaptive_gaussian_peak_refines(cpu_device):
         atol=1e-10,
         rtol=1e-10,
         device=cpu_device,
+        full_output=True,
     )
     # Reference: ∫_0^1 exp(-1000(t-0.5)^2) dt = sqrt(pi/1000) * erf(sqrt(1000)/2)
     exact = math.sqrt(math.pi / 1000.0) * math.erf(math.sqrt(1000) * 0.5)
@@ -283,6 +285,7 @@ def test_adaptive_t_eval_shape_matches_method_K(cpu_device):
         atol=1e-9,
         rtol=1e-9,
         device=cpu_device,
+        full_output=True,
     )
     assert out.t.shape == (out.interval_integrals.shape[0], 31)
     assert out.y.shape == (out.interval_integrals.shape[0], 31, 1)
@@ -298,6 +301,7 @@ def test_adaptive_intervals_cover_domain(cpu_device):
         atol=1e-9,
         rtol=1e-9,
         device=cpu_device,
+        full_output=True,
     )
     assert torch.all(out.h > 0)
     assert abs(out.h.sum().item() - 1.0) < 1e-12
@@ -316,7 +320,7 @@ def test_fixed_rejects_wrong_output_shape(cpu_device):
 
 def test_fixed_n_evaluations_equals_K(cpu_device):
     out = fixed_quadrature(
-        sin_integrand, 0.0, math.pi, method="gl21", device=cpu_device
+        sin_integrand, 0.0, math.pi, method="gl21", device=cpu_device, full_output=True
     )
     assert out.n_evaluations == 21
     assert out.t.shape == (1, 21)

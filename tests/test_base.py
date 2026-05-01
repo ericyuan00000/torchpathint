@@ -60,16 +60,20 @@ def test_resolve_device_explicit():
 
 
 def test_integral_output_minimum_required_fields():
+    """The minimal output (full_output=False path) only needs the four
+    always-on fields plus integer counters."""
     out = IntegralOutput(
         integral=torch.zeros(2),
         method="gk21",
         t_init=torch.tensor(0.0),
         t_final=torch.tensor(1.0),
-        t=torch.zeros(0, 21),
-        y=torch.zeros(0, 21, 2),
-        h=torch.zeros(0),
-        interval_integrals=torch.zeros(0, 2),
     )
     assert out.method == "gk21"
     assert out.n_iterations == 0
+    assert out.t is None
+    assert out.y is None
+    assert out.h is None
+    assert out.interval_integrals is None
+    assert out.interval_errors is None
     assert out.integral_error is None
+    assert out.error_ratios is None
