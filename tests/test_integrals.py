@@ -339,7 +339,7 @@ def test_error_ratios_under_tolerance_after_convergence(cpu_device):
 
 
 # ---------------------------------------------------------------------------
-# Dtype propagation
+# Dtype contract: dtype is the single source of truth across t, f, and output
 # ---------------------------------------------------------------------------
 
 
@@ -360,3 +360,23 @@ def test_dtype_propagates_to_output(dt, cpu_device):
     assert out.t_init.dtype == dt
     assert out.t_final.dtype == dt
     assert out.h.dtype == dt
+    assert out.y.dtype == dt
+    assert out.interval_integrals.dtype == dt
+
+
+@pytest.mark.parametrize("method", ["gk21", "gl15"])
+def test_dtype_mismatch_raises(method, cpu_device):
+    """Integrator dtype=fp64 with an fp32-returning f is a contract error."""
+
+    def f_fp32(t: torch.Tensor) -> torch.Tensor:
+        return torch.sin(t).to(torch.float32).unsqueeze(-1)
+
+    with pytest.raises(ValueError, match="dtype"):
+        path_integral(
+            f_fp32,
+            0.0,
+            math.pi,
+            method=method,
+            device=cpu_device,
+            dtype=torch.float64,
+        )

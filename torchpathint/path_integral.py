@@ -36,7 +36,9 @@ def path_integral(
     (non-adaptive Gauss-Legendre) methods.
 
     Args:
-        f: Integrand ``f: Tensor[N] -> Tensor[N, D]``.
+        f: Integrand ``f: Tensor[N] -> Tensor[N, D]``. Both input points
+            and output values share the integrator's ``dtype``; a mismatch
+            raises ``ValueError``.
         t_init: Lower integration bound (Python scalar or 0-d tensor).
         t_final: Upper integration bound (same).
         method: Rule name. ``"gk15"`` / ``"gk21"`` / ``"gk31"`` select
@@ -53,7 +55,9 @@ def path_integral(
             no probe is needed.
         max_iter: Maximum refinement iterations (adaptive only).
         device: Device for internal tensors. Defaults to CUDA if available.
-        dtype: Floating-point dtype. Defaults to ``torch.float64``.
+        dtype: Single floating-point dtype shared by bounds, nodes/weights,
+            the points passed to ``f``, ``f``'s output, and the returned
+            integral. Defaults to ``torch.float64``.
         full_output: If ``True``, populate the per-interval diagnostic
             fields on the returned :class:`IntegralOutput`. Default
             ``False`` returns only ``integral`` plus cheap metadata

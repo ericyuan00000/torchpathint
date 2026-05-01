@@ -30,6 +30,8 @@ f: Tensor[N] -> Tensor[N, D]
 - The input is a flat 1-d tensor of time points, on the integrator's device
   and dtype.
 - The output's leading axis must match the input length.
+- The output's dtype must match the integrator's `dtype` (the same dtype
+  the input `t` was passed in). A mismatch raises `ValueError`.
 - The trailing `D` axis is the output dimension. Use `D = 1` for scalar
   integrands (typically `unsqueeze(-1)`).
 - `f` takes no other positional or keyword arguments. Close over any extra

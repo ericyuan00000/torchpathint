@@ -192,8 +192,9 @@ def adaptive_quadrature(
 
     Args:
         f: Integrand ``f: Tensor[N] -> Tensor[N, D]``. Receives a flat tensor
-            of time points and returns a 2-d tensor where the leading axis
-            matches the input length.
+            of time points in the integrator's ``dtype`` and must return a
+            2-d tensor of the same dtype whose leading axis matches the input
+            length. A dtype or shape mismatch raises ``ValueError``.
         t_init: Lower integration bound (Python scalar or 0-d tensor).
         t_final: Upper integration bound (same).
         method: Adaptive Gauss-Kronrod rule name (``"gk15"``, ``"gk21"``, or
@@ -209,7 +210,9 @@ def adaptive_quadrature(
         max_iter: Maximum refinement iterations. On the last iteration any
             still-over-tolerance intervals are force-accepted with a warning.
         device: Device for internal tensors. Defaults to CUDA if available.
-        dtype: Floating-point dtype. Defaults to ``torch.float64``.
+        dtype: Single floating-point dtype shared by bounds, nodes/weights,
+            the points passed to ``f``, ``f``'s output, and the returned
+            integral. Defaults to ``torch.float64``.
         full_output: If ``True``, populate the per-interval diagnostic
             fields (``t``, ``y``, ``h``, ``interval_integrals``,
             ``interval_errors``, ``integral_error``, ``error_ratios``) on
@@ -278,11 +281,15 @@ def adaptive_quadrature(
         # state has learned a finite max_batch.
         t_flat = t_eval_pending.reshape(-1)
         y_flat = evaluate_chunked(f, t_flat, state)
-        if y_flat.dim() != 2 or y_flat.shape[0] != t_flat.numel():
+        if (
+            y_flat.dim() != 2
+            or y_flat.shape[0] != t_flat.numel()
+            or y_flat.dtype != dtype
+        ):
             raise ValueError(
-                "Integrand f must return shape [N, D] matching the input length; "
-                f"got input shape [{t_flat.numel()}] and output shape "
-                f"{tuple(y_flat.shape)}."
+                "Integrand f must return shape [N, D] in dtype matching the "
+                f"integrator's dtype; got input shape [{t_flat.numel()}] dtype "
+                f"{dtype}, output shape {tuple(y_flat.shape)} dtype {y_flat.dtype}."
             )
         D = y_flat.shape[-1]
         y_pending = y_flat.reshape(n_pending, K, D)
@@ -432,7 +439,9 @@ def fixed_quadrature(
     smooth enough that a fixed rule of high enough degree converges.
 
     Args:
-        f: Integrand ``f: Tensor[N] -> Tensor[N, D]``.
+        f: Integrand ``f: Tensor[N] -> Tensor[N, D]``. Both input points and
+            output values share the integrator's ``dtype``; a mismatch
+            raises ``ValueError``.
         t_init: Lower integration bound.
         t_final: Upper integration bound.
         method: Non-adaptive rule name ``"gl<n>"`` for any positive ``n``.
@@ -441,7 +450,9 @@ def fixed_quadrature(
         memory_fraction: Deprecated. Previously triggered an upfront
             memory probe; now ignored — chunk sizing is OOM-driven.
         device: Device for internal tensors.
-        dtype: Floating-point dtype.
+        dtype: Single floating-point dtype shared by bounds, nodes/weights,
+            the points passed to ``f``, ``f``'s output, and the returned
+            integral. Defaults to ``torch.float64``.
         full_output: If ``True``, populate the diagnostic fields (``t``,
             ``y``, ``h``, ``interval_integrals``) on the returned
             :class:`IntegralOutput`. Default ``False`` returns only
@@ -474,10 +485,11 @@ def fixed_quadrature(
     t_eval = h_half * nodes + t_mid  # [K]
 
     y = evaluate_chunked(f, t_eval, state)  # [K, D]
-    if y.dim() != 2 or y.shape[0] != t_eval.numel():
+    if y.dim() != 2 or y.shape[0] != t_eval.numel() or y.dtype != dtype:
         raise ValueError(
-            "Integrand f must return shape [N, D] matching the input length; "
-            f"got input shape [{t_eval.numel()}] and output shape {tuple(y.shape)}."
+            "Integrand f must return shape [N, D] in dtype matching the "
+            f"integrator's dtype; got input shape [{t_eval.numel()}] dtype "
+            f"{dtype}, output shape {tuple(y.shape)} dtype {y.dtype}."
         )
     integral = h_half * (weights.unsqueeze(-1) * y).sum(dim=0)  # [D]
 
