@@ -94,8 +94,9 @@ chunker shrinks it automatically on CUDA OOM — so an integrand that's too
 big for the GPU at the current `n_pending · K` size routes around the
 failure without intervention. The old library's all-or-nothing per-interval
 evaluation is replaced by per-evaluation chunking; chunks span interval
-boundaries. `memory_fraction` is accepted as a deprecated no-op kwarg.
-See [memory.md](memory.md).
+boundaries. The old `memory_fraction` kwarg has been removed entirely
+(it had become a no-op once OOM-shrink landed); pass `max_batch` instead
+if you want a manual cap. See [memory.md](memory.md).
 
 ### Bounds
 

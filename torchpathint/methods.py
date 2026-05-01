@@ -265,7 +265,9 @@ def _validate_gk_table(name: str) -> None:
     ``k = 0 ... 2n-1``. A transcription error in any digit will fail this.
     """
     pos_nodes, pos_w_kronrod, pos_w_gauss, n_gauss = _GK_TABLES[name]
-    nodes, w_kronrod, w_gauss = _expand_gk(pos_nodes, pos_w_kronrod, pos_w_gauss, n_gauss)
+    nodes, w_kronrod, w_gauss = _expand_gk(
+        pos_nodes, pos_w_kronrod, pos_w_gauss, n_gauss
+    )
 
     deg_K = 3 * n_gauss + 1
     deg_G = 2 * n_gauss - 1
@@ -313,7 +315,9 @@ def _build_gk_method(
     dtype: torch.dtype,
 ) -> Method:
     pos_nodes, pos_w_kronrod, pos_w_gauss, n_gauss = _GK_TABLES[name]
-    nodes, w_kronrod, w_gauss = _expand_gk(pos_nodes, pos_w_kronrod, pos_w_gauss, n_gauss)
+    nodes, w_kronrod, w_gauss = _expand_gk(
+        pos_nodes, pos_w_kronrod, pos_w_gauss, n_gauss
+    )
     w_error = w_kronrod - w_gauss
 
     return Method(

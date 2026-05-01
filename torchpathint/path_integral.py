@@ -23,7 +23,6 @@ def path_integral(
     atol: float = 1e-5,
     rtol: float = 1e-5,
     max_batch: int | None = None,
-    memory_fraction: float | None = None,
     max_iter: int = 50,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
@@ -36,7 +35,9 @@ def path_integral(
     (non-adaptive Gauss-Legendre) methods.
 
     Args:
-        f: Integrand ``f: Tensor[N] -> Tensor[N, D]``.
+        f: Integrand ``f: Tensor[N] -> Tensor[N, D]``. Both input points
+            and output values share the integrator's ``dtype``; a mismatch
+            raises ``ValueError``.
         t_init: Lower integration bound (Python scalar or 0-d tensor).
         t_final: Upper integration bound (same).
         method: Rule name. ``"gk15"`` / ``"gk21"`` / ``"gk31"`` select
@@ -48,12 +49,11 @@ def path_integral(
             Applies to both adaptive and fixed. ``None`` (default) starts
             unchunked. CUDA OOM halves this cap automatically and the
             learned size persists across iterations.
-        memory_fraction: Deprecated. Previously triggered an upfront
-            memory probe; now ignored — chunk sizing is OOM-driven, so
-            no probe is needed.
         max_iter: Maximum refinement iterations (adaptive only).
         device: Device for internal tensors. Defaults to CUDA if available.
-        dtype: Floating-point dtype. Defaults to ``torch.float64``.
+        dtype: Single floating-point dtype shared by bounds, nodes/weights,
+            the points passed to ``f``, ``f``'s output, and the returned
+            integral. Defaults to ``torch.float64``.
         full_output: If ``True``, populate the per-interval diagnostic
             fields on the returned :class:`IntegralOutput`. Default
             ``False`` returns only ``integral`` plus cheap metadata
@@ -83,7 +83,6 @@ def path_integral(
             atol=atol,
             rtol=rtol,
             max_batch=max_batch,
-            memory_fraction=memory_fraction,
             max_iter=max_iter,
             device=device,
             dtype=dtype,
@@ -96,7 +95,6 @@ def path_integral(
             t_final,
             method=method,
             max_batch=max_batch,
-            memory_fraction=memory_fraction,
             device=device,
             dtype=dtype,
             full_output=full_output,

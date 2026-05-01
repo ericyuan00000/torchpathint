@@ -13,7 +13,7 @@ nav:
   - Home: index.md
   - Theory: theory.md
   - API reference: api.md
-  - Memory probe: memory.md
+  - GPU memory and chunking: memory.md
   - Migrating from torchpathdiffeq: migration.md
 
 theme:
