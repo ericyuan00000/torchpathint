@@ -83,13 +83,6 @@ out = path_integral(f, 0.0, 1.0, method="gk21", max_batch=8)
 
 `max_batch=None` (default) means "start unchunked."
 
-## `memory_fraction` is deprecated
-
-`memory_fraction` previously triggered the probe-based estimator. It now
-emits a `DeprecationWarning` and is otherwise ignored — chunk sizing is
-OOM-driven and doesn't need an upfront budget. Drop the kwarg from your
-call sites; pass `max_batch` if you want a manual cap.
-
 ## Diagnostics
 
 The chunker logs a warning each time it shrinks:

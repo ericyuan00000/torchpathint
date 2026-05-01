@@ -160,19 +160,6 @@ def evaluate_chunked(
             )
 
 
-def _warn_memory_fraction_deprecated(memory_fraction: float | None) -> None:
-    if memory_fraction is None:
-        return
-    warnings.warn(
-        "memory_fraction is deprecated and now a no-op. The integrator "
-        "starts unchunked and halves chunks on CUDA OOM, which removes "
-        "the need for an upfront memory probe. Pass max_batch instead "
-        "if you want a manual cap.",
-        DeprecationWarning,
-        stacklevel=3,
-    )
-
-
 def adaptive_quadrature(
     f: Callable[[torch.Tensor], torch.Tensor],
     t_init: float | torch.Tensor,
@@ -182,7 +169,6 @@ def adaptive_quadrature(
     atol: float = 1e-5,
     rtol: float = 1e-5,
     max_batch: int | None = None,
-    memory_fraction: float | None = None,
     max_iter: int = 50,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
@@ -205,8 +191,6 @@ def adaptive_quadrature(
             ``None`` (default) starts unchunked; chunks span interval
             boundaries. CUDA OOM halves this cap automatically and the
             learned size persists across iterations.
-        memory_fraction: Deprecated. Previously triggered an upfront
-            memory probe; now ignored — chunk sizing is OOM-driven.
         max_iter: Maximum refinement iterations. On the last iteration any
             still-over-tolerance intervals are force-accepted with a warning.
         device: Device for internal tensors. Defaults to CUDA if available.
@@ -227,7 +211,6 @@ def adaptive_quadrature(
         ``full_output=False`` (default): only ``integral`` and the cheap
         metadata; all per-interval diagnostic fields are ``None``.
     """
-    _warn_memory_fraction_deprecated(memory_fraction)
     device = resolve_device(device)
     t_init_t = normalize_bound(t_init, device, dtype, "t_init")
     t_final_t = normalize_bound(t_final, device, dtype, "t_final")
@@ -426,7 +409,6 @@ def fixed_quadrature(
     *,
     method: str = "gl15",
     max_batch: int | None = None,
-    memory_fraction: float | None = None,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
     full_output: bool = False,
@@ -447,8 +429,6 @@ def fixed_quadrature(
         method: Non-adaptive rule name ``"gl<n>"`` for any positive ``n``.
         max_batch: Initial cap on evaluations per ``f`` call. CUDA OOM
             halves this automatically.
-        memory_fraction: Deprecated. Previously triggered an upfront
-            memory probe; now ignored — chunk sizing is OOM-driven.
         device: Device for internal tensors.
         dtype: Single floating-point dtype shared by bounds, nodes/weights,
             the points passed to ``f``, ``f``'s output, and the returned
@@ -465,7 +445,6 @@ def fixed_quadrature(
         an embedded rule). The remaining diagnostic fields are populated
         only when ``full_output=True``.
     """
-    _warn_memory_fraction_deprecated(memory_fraction)
     device = resolve_device(device)
     t_init_t = normalize_bound(t_init, device, dtype, "t_init")
     t_final_t = normalize_bound(t_final, device, dtype, "t_final")

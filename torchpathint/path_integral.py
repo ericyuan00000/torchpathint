@@ -23,7 +23,6 @@ def path_integral(
     atol: float = 1e-5,
     rtol: float = 1e-5,
     max_batch: int | None = None,
-    memory_fraction: float | None = None,
     max_iter: int = 50,
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float64,
@@ -50,9 +49,6 @@ def path_integral(
             Applies to both adaptive and fixed. ``None`` (default) starts
             unchunked. CUDA OOM halves this cap automatically and the
             learned size persists across iterations.
-        memory_fraction: Deprecated. Previously triggered an upfront
-            memory probe; now ignored — chunk sizing is OOM-driven, so
-            no probe is needed.
         max_iter: Maximum refinement iterations (adaptive only).
         device: Device for internal tensors. Defaults to CUDA if available.
         dtype: Single floating-point dtype shared by bounds, nodes/weights,
@@ -87,7 +83,6 @@ def path_integral(
             atol=atol,
             rtol=rtol,
             max_batch=max_batch,
-            memory_fraction=memory_fraction,
             max_iter=max_iter,
             device=device,
             dtype=dtype,
@@ -100,7 +95,6 @@ def path_integral(
             t_final,
             method=method,
             max_batch=max_batch,
-            memory_fraction=memory_fraction,
             device=device,
             dtype=dtype,
             full_output=full_output,

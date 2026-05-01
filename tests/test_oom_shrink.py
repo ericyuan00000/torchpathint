@@ -11,8 +11,6 @@ tests run on CPU.
 
 from __future__ import annotations
 
-import warnings
-
 import pytest
 import torch
 
@@ -197,21 +195,3 @@ def test_oom_warning_omits_hint_when_set(monkeypatch, caplog):
     assert not any("expandable_segments" in r.getMessage() for r in caplog.records)
 
 
-def test_memory_fraction_emits_deprecation_warning():
-    """The deprecated kwarg is accepted but warns and is otherwise ignored."""
-
-    def integrand(t):
-        return torch.sin(t).unsqueeze(-1)
-
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        adaptive_quadrature(
-            integrand, 0.0, torch.pi,
-            method="gk21", atol=1e-8, rtol=1e-8,
-            memory_fraction=0.5, device="cpu", dtype=torch.float64,
-        )
-    deprecation_warnings = [
-        x for x in w if issubclass(x.category, DeprecationWarning)
-        and "memory_fraction" in str(x.message)
-    ]
-    assert len(deprecation_warnings) == 1
