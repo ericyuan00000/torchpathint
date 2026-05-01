@@ -24,6 +24,7 @@ def example_smooth() -> None:
         method="gk21",
         atol=1e-10,
         rtol=1e-10,
+        full_output=True,
     )
     print(f"  result   = {out.integral.item():.16f}")
     print(f"  iters    = {out.n_iterations}, intervals = {out.interval_integrals.shape[0]}")
@@ -40,6 +41,7 @@ def example_sharp_peak() -> None:
         method="gk21",
         atol=1e-10,
         rtol=1e-10,
+        full_output=True,
     )
     exact = math.sqrt(math.pi / 1000.0) * math.erf(math.sqrt(1000) * 0.5)
     print(f"  result   = {out.integral.item():.12e}")

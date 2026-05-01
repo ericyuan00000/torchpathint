@@ -57,13 +57,17 @@ out = path_integral(f, t_init, t_final, *,
                     atol=1e-5, rtol=1e-5,
                     max_batch=None,
                     max_iter=50,
-                    device=None, dtype=torch.float64)
+                    device=None, dtype=torch.float64,
+                    full_output=False)
 ```
 
 - `method` starting with `"gk"` dispatches to `adaptive_quadrature`.
 - `method` starting with `"gl"` dispatches to `fixed_quadrature`. For `gl*`,
   the `atol`, `rtol`, and `max_iter` arguments are unused.
 - `device=None` defaults to CUDA when available, else CPU.
+- `full_output=False` (default) returns only the integral plus cheap
+  metadata; per-interval diagnostics are `None`. Pass `full_output=True`
+  to populate them — see [`IntegralOutput`](#integraloutput) below.
 
 Returns an [`IntegralOutput`](#integraloutput).
 
@@ -87,13 +91,22 @@ no error estimate.
 
 ## `IntegralOutput`
 
-Dataclass returned by every integrator. Notable fields:
+Dataclass returned by every integrator. Fields fall into two groups:
+
+**Always populated** (cheap, no per-interval cost):
 
 | Field | Shape | Meaning |
 | --- | --- | --- |
 | `integral` | `[D]` | Computed integral. |
 | `method` | str | Rule name, e.g. `"gk21"`. |
 | `t_init`, `t_final` | 0-d | Bounds, normalized to tensors. |
+| `n_iterations` | int | Adaptive refinement iterations performed. |
+| `n_evaluations` | int | Total integrand evaluations. |
+
+**Populated only when `full_output=True`** (per-interval diagnostics):
+
+| Field | Shape | Meaning |
+| --- | --- | --- |
 | `t` | `[N, K]` | Quadrature points actually evaluated, grouped by accepted interval. |
 | `y` | `[N, K, D]` | Integrand values at `t`. |
 | `h` | `[N]` | Width of each accepted interval. |
@@ -101,11 +114,15 @@ Dataclass returned by every integrator. Notable fields:
 | `interval_errors` | `[N, D]` or None | Per-interval embedded-rule differences. |
 | `integral_error` | `[D]` or None | Total error estimate. |
 | `error_ratios` | `[N]` or None | Per-interval `ε_i / tol`. Useful diagnostic for "where did refinement land". |
-| `n_iterations` | int | Adaptive refinement iterations performed. |
-| `n_evaluations` | int | Total integrand evaluations. |
+
+In default mode (`full_output=False`) every field in the diagnostic group
+is `None`, and the adaptive engine doesn't accumulate the per-interval
+tensors across iterations either — drop this when you only need the
+integral value, especially on memory-tight GPU runs.
 
 For `gl*` methods, `interval_errors`, `integral_error`, and
-`error_ratios` are `None`, and `N = 1` (one trivial "interval").
+`error_ratios` are always `None`. When `full_output=True`, `gl*` returns
+`N = 1` (one trivial "interval") for the populated diagnostic tensors.
 
 ## `Method` and `get_method`
 

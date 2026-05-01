@@ -8,10 +8,12 @@ old library, this page is the diff.
 
 - `IntegralOutput` is still a dataclass with `integral`, `t`, `y`, `h`,
   `interval_integrals`, `n_iterations`, `n_evaluations` fields. The semantics
-  of each field are unchanged where they exist.
+  of each field are unchanged where they exist, but the per-interval
+  diagnostic fields (`t`, `y`, `h`, `interval_*`, `*_error*`,
+  `error_ratios`) are now populated only when the integrator is called
+  with `full_output=True`. By default they are `None` — pass
+  `full_output=True` to recover the old fully-populated output.
 - The runtime is still pure PyTorch + numpy, no extra dependencies.
-- The integrator still evaluates one batch at a time and stores per-step
-  diagnostics on the output object.
 
 ## What was removed
 

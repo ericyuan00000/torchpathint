@@ -121,6 +121,7 @@ def main() -> None:
         f, 0.0, math.pi,
         method="gk21", atol=1e-9, rtol=1e-9,
         device=device, dtype=dtype, max_iter=10,
+        full_output=True,
     )
     integral_norm = out.integral.norm().item()
     print(f"integral norm: {integral_norm:.6e}")
