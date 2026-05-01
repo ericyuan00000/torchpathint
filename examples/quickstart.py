@@ -51,7 +51,9 @@ def example_sharp_peak() -> None:
     print(f"  result   = {out.integral.item():.12e}")
     print(f"  exact    = {exact:.12e}")
     print(f"  err      = {abs(out.integral.item() - exact):.2e}")
-    print(f"  iters    = {out.n_iterations}, intervals = {out.interval_integrals.shape[0]}")
+    print(
+        f"  iters    = {out.n_iterations}, intervals = {out.interval_integrals.shape[0]}"
+    )
 
 
 def example_vector_integrand() -> None:

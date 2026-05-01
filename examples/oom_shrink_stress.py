@@ -14,8 +14,9 @@ What we expect to see:
 2. The integrand passes the rtol/atol bar (sin is smooth) and converges
    in one iteration on a low-tolerance run, OR splits a few times on a
    tight-tolerance run; once n_pending climbs past the OOM threshold,
-   ``evaluate_chunked`` catches the OOM, halves ``state.max_batch``, and
-   the rest of the integration runs at the smaller chunk size.
+   ``evaluate_chunked`` catches the OOM, halves the chunk size, and the
+   rest of the integration runs at the smaller cap (the engine threads
+   the returned size back into the next call).
 3. The integral matches a CPU reference to a few decimals.
 
 Run via NERSC interactive node:
@@ -25,6 +26,7 @@ Run via NERSC interactive node:
         bash -lc "conda activate torchpathint && \\
                   python examples/oom_shrink_stress.py"
 """
+
 from __future__ import annotations
 
 import logging
@@ -61,7 +63,7 @@ class HungryIntegrand(nn.Module):
         self.kernel = nn.Parameter(torch.randn(dim, dim) / dim**0.5)
 
     def forward(self, t: torch.Tensor) -> torch.Tensor:  # t: [N]
-        x = self.lift(t.unsqueeze(-1))                 # [N, dim]
+        x = self.lift(t.unsqueeze(-1))  # [N, dim]
         x = torch.tanh(x)
         # [N, dim, dim] outer product. Its gradient w.r.t. x has the same
         # shape, so under is_grads_batched=True vmap stacks a second N
@@ -69,7 +71,7 @@ class HungryIntegrand(nn.Module):
         outer = x.unsqueeze(-1) * x.unsqueeze(-2)
         # Contract with a trainable kernel and reduce to a scalar per t.
         scaled = (outer * self.kernel).sum(dim=(-1, -2))
-        return torch.sin(t) + 1e-6 * scaled            # [N]
+        return torch.sin(t) + 1e-6 * scaled  # [N]
 
 
 def make_grad_integrand(model: HungryIntegrand, params: list[torch.nn.Parameter]):
@@ -78,11 +80,14 @@ def make_grad_integrand(model: HungryIntegrand, params: list[torch.nn.Parameter]
     popcornn's gradient-of-loss integrator does."""
 
     def f(t: torch.Tensor) -> torch.Tensor:
-        l = model(t)                                       # [N], graph live
-        n = l.shape[0]
-        grad_out = torch.eye(n, device=l.device, dtype=l.dtype)
+        loss = model(t)  # [N], graph live
+        n = loss.shape[0]
+        grad_out = torch.eye(n, device=loss.device, dtype=loss.dtype)
         grads = torch.autograd.grad(
-            l, params, grad_outputs=grad_out, is_grads_batched=True,
+            loss,
+            params,
+            grad_outputs=grad_out,
+            is_grads_batched=True,
         )
         return torch.cat([g.reshape(n, -1) for g in grads], dim=-1).detach()
 
@@ -94,8 +99,10 @@ def main() -> None:
         raise SystemExit("This stress test requires CUDA.")
 
     free_before, total = torch.cuda.mem_get_info()
-    print(f"GPU memory before model load: {free_before / 1e9:.2f} / "
-          f"{total / 1e9:.2f} GB free")
+    print(
+        f"GPU memory before model load: {free_before / 1e9:.2f} / "
+        f"{total / 1e9:.2f} GB free"
+    )
 
     # dim is calibrated so a single-K (21) call fits comfortably but
     # adaptive splits will eventually trip OOM and force the chunker
@@ -108,8 +115,10 @@ def main() -> None:
     model = HungryIntegrand(dim).to(device).to(dtype)
     params = list(model.parameters())
     n_params = sum(p.numel() for p in params)
-    print(f"model: dim={dim}  params={n_params:,}  "
-          f"weight memory = {n_params * 4 / 1e6:.1f} MB")
+    print(
+        f"model: dim={dim}  params={n_params:,}  "
+        f"weight memory = {n_params * 4 / 1e6:.1f} MB"
+    )
 
     f = make_grad_integrand(model, params)
 
@@ -118,9 +127,15 @@ def main() -> None:
     # converges quickly without splits at default tolerances.
     print("\n=== adaptive_quadrature(gk21, atol=1e-9, rtol=1e-9) ===")
     out = adaptive_quadrature(
-        f, 0.0, math.pi,
-        method="gk21", atol=1e-9, rtol=1e-9,
-        device=device, dtype=dtype, max_iter=10,
+        f,
+        0.0,
+        math.pi,
+        method="gk21",
+        atol=1e-9,
+        rtol=1e-9,
+        device=device,
+        dtype=dtype,
+        max_iter=10,
         full_output=True,
     )
     integral_norm = out.integral.norm().item()

@@ -17,9 +17,11 @@ The adaptive engine ``adaptive_quadrature`` is the heart of the library:
    the two halves on the next iteration.
 5. Repeat until all intervals are accepted or ``max_iter`` is hit.
 
-The autograd graph is preserved end-to-end: ``f(t)`` is never detached, and
-all interval bookkeeping uses concatenation/indexing that flows gradients
-back through the integration bounds and the integrand parameters.
+``f(t)`` is never detached and the bookkeeping is concatenation/indexing,
+so gradients happen to flow through bounds and integrand parameters when
+the caller wants them. That is incidental, not a contract — the integrator
+is not required to be autograd-transparent and may break the graph in the
+future if it simplifies the implementation.
 
 For non-adaptive use, ``fixed_quadrature`` applies a single Gauss-Legendre
 rule on the full domain — useful as a baseline or when smoothness is known.
@@ -43,25 +45,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class _BatchState:
-    """Mutable per-integration record of the current safe chunk size.
-
-    The adaptive loop calls ``evaluate_chunked`` once per refinement
-    iteration. Carrying state across calls means a chunk size learned by
-    halving on OOM at iteration 5 doesn't have to be re-discovered at
-    iterations 6, 7, … — those iterations chunk at the learned size from
-    the start.
-
-    ``max_batch is None`` means "no chunking yet (one big call)"; the first
-    OOM transitions it to a finite cap.
-    """
-
-    __slots__ = ("max_batch",)
-
-    def __init__(self, max_batch: int | None) -> None:
-        self.max_batch = max_batch
-
-
 def _is_cuda_oom(exc: BaseException) -> bool:
     """True for the canonical OOM error and the older ``RuntimeError`` form.
 
@@ -72,9 +55,7 @@ def _is_cuda_oom(exc: BaseException) -> bool:
     """
     if isinstance(exc, torch.cuda.OutOfMemoryError):
         return True
-    if isinstance(exc, RuntimeError) and "out of memory" in str(exc).lower():
-        return True
-    return False
+    return isinstance(exc, RuntimeError) and "out of memory" in str(exc).lower()
 
 
 def _expandable_segments_hint() -> str:
@@ -100,38 +81,40 @@ def _expandable_segments_hint() -> str:
 def evaluate_chunked(
     f: Callable[[torch.Tensor], torch.Tensor],
     t: torch.Tensor,
-    state: _BatchState,
-) -> torch.Tensor:
+    max_batch: int | None,
+) -> tuple[torch.Tensor, int | None]:
     """Evaluate ``f`` on a flat 1-d tensor of points, halving on CUDA OOM.
 
-    Starts at ``state.max_batch`` (``None`` = one big call). On OOM, drops
-    partial results, calls ``empty_cache``, halves ``state.max_batch`` in
-    place, and retries. The mutated state persists, so subsequent calls
-    in the same integration skip the sizes that already failed.
+    Starts at ``max_batch`` (``None`` = one big call). On OOM, drops
+    partial results, calls ``empty_cache``, halves ``max_batch`` and
+    retries. Returns the (possibly shrunken) ``max_batch`` so the caller
+    can persist the learned safe size across successive calls in the
+    same integration.
 
     Non-OOM exceptions are re-raised unchanged.
 
     Args:
         f: Integrand. Takes shape ``[N]``, returns ``[N, D]``.
         t: 1-d tensor of evaluation points.
-        state: Shared chunk-size record (see :class:`_BatchState`).
+        max_batch: Initial chunk-size cap; ``None`` means "one big call."
 
     Returns:
-        Tensor of shape ``[N, D]``.
+        ``(y, max_batch_after)`` — ``y`` has shape ``[N, D]``;
+        ``max_batch_after`` is the size that succeeded (unchanged unless
+        an OOM forced a shrink).
     """
     n = t.numel()
     if n == 0:
         raise ValueError("evaluate_chunked received an empty tensor.")
     while True:
-        current = state.max_batch
         parts: list[torch.Tensor] | None = None
         try:
-            if current is None or current >= n:
-                return f(t)
+            if max_batch is None or max_batch >= n:
+                return f(t), max_batch
             parts = []
-            for start in range(0, n, current):
-                parts.append(f(t[start : start + current]))
-            return torch.cat(parts, dim=0)
+            for start in range(0, n, max_batch):
+                parts.append(f(t[start : start + max_batch]))
+            return torch.cat(parts, dim=0), max_batch
         except RuntimeError as exc:
             if not _is_cuda_oom(exc):
                 raise
@@ -144,20 +127,19 @@ def evaluate_chunked(
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
             torch.cuda.empty_cache()
-            previous = current if current is not None else n
+            previous = max_batch if max_batch is not None else n
             new_size = max(1, previous // 2)
             if new_size >= previous:
                 # Already at 1 — nothing more to shrink. Re-raise so the
                 # caller sees the OOM rather than spinning.
                 raise
-            state.max_batch = new_size
             logger.warning(
-                "evaluate_chunked: caught CUDA OOM at max_batch=%s, "
-                "retrying at %d.%s",
-                "None" if current is None else str(current),
+                "evaluate_chunked: caught CUDA OOM at max_batch=%s, retrying at %d.%s",
+                "None" if max_batch is None else str(max_batch),
                 new_size,
                 _expandable_segments_hint(),
             )
+            max_batch = new_size
 
 
 def adaptive_quadrature(
@@ -225,8 +207,6 @@ def adaptive_quadrature(
     weights_error = method_obj.weights_error
     K = nodes.numel()
 
-    state = _BatchState(max_batch)
-
     pending_left = t_init_t.unsqueeze(0)
     pending_right = t_final_t.unsqueeze(0)
 
@@ -263,7 +243,7 @@ def adaptive_quadrature(
         # together, optionally chunked across f calls when the OOM-shrink
         # state has learned a finite max_batch.
         t_flat = t_eval_pending.reshape(-1)
-        y_flat = evaluate_chunked(f, t_flat, state)
+        y_flat, max_batch = evaluate_chunked(f, t_flat, max_batch)
         if (
             y_flat.dim() != 2
             or y_flat.shape[0] != t_flat.numel()
@@ -457,13 +437,11 @@ def fixed_quadrature(
     nodes = method_obj.nodes
     weights = method_obj.weights
 
-    state = _BatchState(max_batch)
-
     h_half = (t_final_t - t_init_t) / 2
     t_mid = (t_final_t + t_init_t) / 2
     t_eval = h_half * nodes + t_mid  # [K]
 
-    y = evaluate_chunked(f, t_eval, state)  # [K, D]
+    y, _ = evaluate_chunked(f, t_eval, max_batch)  # [K, D]
     if y.dim() != 2 or y.shape[0] != t_eval.numel() or y.dtype != dtype:
         raise ValueError(
             "Integrand f must return shape [N, D] in dtype matching the "
