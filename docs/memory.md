@@ -19,6 +19,21 @@ whatever `f` allocates plus the `[n_pending · K, D]` output.
 
 `fixed_quadrature` is a single iteration with `K` evaluations.
 
+### Output-side memory: `full_output`
+
+By default the integrators return only the integral plus cheap counters;
+the per-interval `t`, `y`, `h`, and `interval_*` tensors are `None`. In
+this default mode `adaptive_quadrature` doesn't accumulate accepted
+intervals across iterations either — the running sum is `[D]` regardless
+of mesh size. For high-D integrands on a finely refined mesh this saves
+the largest output-side allocation (the `[N, K, D]` `y` tensor) entirely.
+
+Pass `full_output=True` when you actually need the diagnostic fields
+(`out.t`, `out.y`, `out.h`, `out.interval_integrals`,
+`out.interval_errors`, `out.integral_error`, `out.error_ratios`) — for
+example, when plotting the converged mesh or auditing per-interval error
+distribution.
+
 ## The default: shrink on CUDA OOM
 
 When `f(t)` raises a CUDA out-of-memory error, the integrator catches it,

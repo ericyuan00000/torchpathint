@@ -15,7 +15,7 @@ from torchpathint import path_integral
 
 
 def example_smooth() -> None:
-    """A smooth integrand converges in one Kronrod application."""
+    """The default call: only the integral comes back."""
     print("\n[smooth] integral of sin(t) from 0 to pi (exact = 2)")
     out = path_integral(
         lambda t: torch.sin(t).unsqueeze(-1),
@@ -24,15 +24,19 @@ def example_smooth() -> None:
         method="gk21",
         atol=1e-10,
         rtol=1e-10,
-        full_output=True,
     )
-    print(f"  result   = {out.integral.item():.16f}")
-    print(f"  iters    = {out.n_iterations}, intervals = {out.interval_integrals.shape[0]}")
-    print(f"  evals    = {out.n_evaluations}")
+    print(f"  result = {out.integral.item():.16f}")
+    print(f"  evals  = {out.n_evaluations}")
 
 
 def example_sharp_peak() -> None:
-    """A localised peak forces the adaptive loop to refine."""
+    """A localised peak forces the adaptive loop to refine.
+
+    Pass ``full_output=True`` to see where the loop landed: the per-interval
+    mesh, integrand evaluations, and error estimates are returned alongside
+    the integral. By default these diagnostic fields are ``None`` to save
+    memory.
+    """
     print("\n[sharp peak] integral of exp(-1000*(t-0.5)^2) from 0 to 1")
     out = path_integral(
         lambda t: torch.exp(-1000.0 * (t - 0.5) ** 2).unsqueeze(-1),
