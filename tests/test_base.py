@@ -77,3 +77,4 @@ def test_integral_output_minimum_required_fields():
     assert out.interval_errors is None
     assert out.integral_error is None
     assert out.error_ratios is None
+    assert out.max_batch is None

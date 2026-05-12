@@ -113,6 +113,24 @@ out = path_integral(f, 0.0, 1.0, method="gk21", max_batch=8)
 
 `max_batch=None` (default) means "start unchunked."
 
+### Persisting the learned size across calls
+
+`IntegralOutput.max_batch` reports the chunk size that survived the call —
+identical to the input if no OOM occurred, smaller if `evaluate_chunked`
+halved. Feed it back into the next call to skip re-discovering the safe
+size:
+
+```python
+mb = None
+for step in range(n_steps):
+    out = path_integral(f, 0.0, 1.0, method="gk21", max_batch=mb)
+    mb = out.max_batch  # sticky-shrink across calls
+```
+
+Without this, every call restarts at the user's initial `max_batch` and
+pays the same OOM-and-halve cost again. With it, the halve fires once
+per integrator lifetime rather than once per call.
+
 ## Diagnostics
 
 The chunker logs a warning each time it shrinks:

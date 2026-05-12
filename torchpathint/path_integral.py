@@ -48,7 +48,11 @@ def path_integral(
         max_batch: Initial cap on integrand evaluations per ``f`` call.
             Applies to both adaptive and fixed. ``None`` (default) starts
             unchunked. CUDA OOM halves this cap automatically and the
-            learned size persists across iterations.
+            learned size persists across iterations within a call. The
+            final value is returned on ``IntegralOutput.max_batch`` so
+            the caller can feed it back into the next call (sticky
+            shrink — the OOM-and-halve cycle only fires once per
+            integrator rather than once per call).
         max_iter: Maximum refinement iterations (adaptive only).
         device: Device for internal tensors. Defaults to CUDA if available.
         dtype: Single floating-point dtype shared by bounds, nodes/weights,
