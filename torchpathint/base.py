@@ -41,6 +41,11 @@ class IntegralOutput:
             non-adaptive methods or when ``full_output=False``.
         n_iterations: Adaptive refinement iterations performed (0 for non-adaptive).
         n_evaluations: Total number of integrand evaluations.
+        max_batch: Chunk size that survived the call, i.e. the value of
+            ``max_batch`` after any OOM-driven halvings. Mirrors the input
+            when no OOM occurred; smaller when ``evaluate_chunked`` had to
+            shrink. Feed back into the next call to skip re-discovering
+            the safe size from scratch.
     """
 
     integral: torch.Tensor
@@ -56,6 +61,7 @@ class IntegralOutput:
     error_ratios: torch.Tensor | None = None
     n_iterations: int = 0
     n_evaluations: int = 0
+    max_batch: int | None = None
 
 
 def normalize_bound(

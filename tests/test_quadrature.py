@@ -512,6 +512,10 @@ def test_adaptive_quadrature_recovers_when_first_call_OOMs():
     assert torch.allclose(
         out.integral, torch.tensor([2.0], dtype=torch.float64), atol=1e-6
     )
+    # Learned max_batch propagates onto the output so a follow-up call can
+    # start sticky-chunked rather than re-discovering the failing size.
+    assert out.max_batch is not None
+    assert out.max_batch <= threshold
 
 
 def test_fixed_quadrature_recovers_when_full_K_OOMs():
@@ -534,3 +538,105 @@ def test_fixed_quadrature_recovers_when_full_K_OOMs():
     assert torch.allclose(
         out.integral, torch.tensor([2.0], dtype=torch.float64), atol=1e-2
     )
+    assert out.max_batch is not None
+    assert out.max_batch <= K // 2
+
+
+def test_adaptive_quadrature_max_batch_passes_through_when_no_oom():
+    """No OOM → output's max_batch equals the input (None or user value)."""
+    out_none = adaptive_quadrature(
+        sin_integrand,
+        0.0,
+        torch.pi,
+        method="gk21",
+        atol=1e-8,
+        rtol=1e-8,
+        device="cpu",
+        dtype=torch.float64,
+    )
+    assert out_none.max_batch is None
+
+    out_cap = adaptive_quadrature(
+        sin_integrand,
+        0.0,
+        torch.pi,
+        method="gk21",
+        atol=1e-8,
+        rtol=1e-8,
+        max_batch=7,
+        device="cpu",
+        dtype=torch.float64,
+    )
+    assert out_cap.max_batch == 7
+
+
+def test_fixed_quadrature_max_batch_passes_through_when_no_oom():
+    out_none = fixed_quadrature(
+        sin_integrand,
+        0.0,
+        torch.pi,
+        method="gl15",
+        device="cpu",
+        dtype=torch.float64,
+    )
+    assert out_none.max_batch is None
+
+    out_cap = fixed_quadrature(
+        sin_integrand,
+        0.0,
+        torch.pi,
+        method="gl15",
+        max_batch=4,
+        device="cpu",
+        dtype=torch.float64,
+    )
+    assert out_cap.max_batch == 4
+
+
+def test_sticky_max_batch_round_trip_skips_oom_on_second_call():
+    """Feeding ``out.max_batch`` back as the next call's input means the
+    second call never triggers the OOM-and-halve path."""
+    K = 21
+    threshold = K // 2
+
+    def integrand(t):
+        if t.numel() > threshold:
+            raise RuntimeError("CUDA out of memory: synthetic")
+        return torch.sin(t).unsqueeze(-1)
+
+    out1 = adaptive_quadrature(
+        integrand,
+        0.0,
+        torch.pi,
+        method="gk21",
+        atol=1e-8,
+        rtol=1e-8,
+        device="cpu",
+        dtype=torch.float64,
+    )
+    learned = out1.max_batch
+    assert learned is not None and learned <= threshold
+
+    # Wrap the integrand to count calls; the threshold guard would still raise
+    # on too-large chunks, but with sticky max_batch we shouldn't see any.
+    raised: list[int] = []
+
+    def integrand_observed(t):
+        if t.numel() > threshold:
+            raised.append(t.numel())
+        return integrand(t)
+
+    out2 = adaptive_quadrature(
+        integrand_observed,
+        0.0,
+        torch.pi,
+        method="gk21",
+        atol=1e-8,
+        rtol=1e-8,
+        max_batch=learned,
+        device="cpu",
+        dtype=torch.float64,
+    )
+    assert not raised, f"second call still tried oversized chunks: {raised}"
+    assert out2.max_batch == learned
+    assert torch.allclose(out2.integral, out1.integral, atol=1e-10)

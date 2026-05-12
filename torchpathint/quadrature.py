@@ -139,6 +139,10 @@ def evaluate_chunked(
                 new_size,
                 _expandable_segments_hint(),
             )
+            # FIXME(2026-05-08): observed hang after this point on diverging
+            # Popcornn paths — process stays alive but makes no forward
+            # progress for >30 min, no further OOM messages. See
+            # docs/memory.md "Known failure mode: post-OOM-retry hang".
             max_batch = new_size
 
 
@@ -172,7 +176,10 @@ def adaptive_quadrature(
         max_batch: Initial cap on integrand evaluations per ``f`` call.
             ``None`` (default) starts unchunked; chunks span interval
             boundaries. CUDA OOM halves this cap automatically and the
-            learned size persists across iterations.
+            learned size persists across iterations within a call. The
+            final value is returned on ``IntegralOutput.max_batch`` so
+            the caller can feed it back into the next call and skip
+            re-discovering the safe size from scratch.
         max_iter: Maximum refinement iterations. On the last iteration any
             still-over-tolerance intervals are force-accepted with a warning.
         device: Device for internal tensors. Defaults to CUDA if available.
@@ -332,6 +339,7 @@ def adaptive_quadrature(
             t_final=t_final_t,
             n_iterations=n_iter,
             n_evaluations=n_evaluations,
+            max_batch=max_batch,
         )
 
     all_t_left = torch.cat(accepted_t_left)
@@ -379,6 +387,7 @@ def adaptive_quadrature(
         error_ratios=final_error_ratios,
         n_iterations=n_iter,
         n_evaluations=n_evaluations,
+        max_batch=max_batch,
     )
 
 
@@ -408,7 +417,9 @@ def fixed_quadrature(
         t_final: Upper integration bound.
         method: Non-adaptive rule name ``"gl<n>"`` for any positive ``n``.
         max_batch: Initial cap on evaluations per ``f`` call. CUDA OOM
-            halves this automatically.
+            halves this automatically. The final value is returned on
+            ``IntegralOutput.max_batch`` for the caller to feed back
+            into the next call.
         device: Device for internal tensors.
         dtype: Single floating-point dtype shared by bounds, nodes/weights,
             the points passed to ``f``, ``f``'s output, and the returned
@@ -441,7 +452,7 @@ def fixed_quadrature(
     t_mid = (t_final_t + t_init_t) / 2
     t_eval = h_half * nodes + t_mid  # [K]
 
-    y, _ = evaluate_chunked(f, t_eval, max_batch)  # [K, D]
+    y, max_batch = evaluate_chunked(f, t_eval, max_batch)  # [K, D]
     if y.dim() != 2 or y.shape[0] != t_eval.numel() or y.dtype != dtype:
         raise ValueError(
             "Integrand f must return shape [N, D] in dtype matching the "
@@ -458,6 +469,7 @@ def fixed_quadrature(
             t_final=t_final_t,
             n_iterations=0,
             n_evaluations=t_eval.numel(),
+            max_batch=max_batch,
         )
 
     h_full = t_final_t - t_init_t
@@ -472,4 +484,5 @@ def fixed_quadrature(
         interval_integrals=integral.unsqueeze(0),
         n_iterations=0,
         n_evaluations=t_eval.numel(),
+        max_batch=max_batch,
     )
