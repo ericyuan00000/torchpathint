@@ -139,6 +139,10 @@ def evaluate_chunked(
                 new_size,
                 _expandable_segments_hint(),
             )
+            # FIXME(2026-05-08): observed hang after this point on diverging
+            # Popcornn paths — process stays alive but makes no forward
+            # progress for >30 min, no further OOM messages. See
+            # docs/memory.md "Known failure mode: post-OOM-retry hang".
             max_batch = new_size
 
 
